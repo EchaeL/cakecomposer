@@ -1,0 +1,603 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>테트리스</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jua&family=Gowun+Dodum&display=swap">
+<style>
+/* Layout: night arcade cabinet — hold + stats on the left, the well in the middle, next queue on the right, touch pad below */
+:root {
+  --bg: #1c1a2e;
+  --panel: #282541;
+  --well: #121120;
+  --grid: rgba(255, 255, 255, .045);
+  --ink: #f2edff;
+  --muted: #a39cc2;
+  --accent: #ff7aa8;
+  --line: rgba(255, 255, 255, .12);
+  --display: 'Jua', 'Gowun Dodum', system-ui, sans-serif;
+  --body: 'Gowun Dodum', system-ui, -apple-system, 'Apple SD Gothic Neo', sans-serif;
+  color-scheme: dark;
+}
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: radial-gradient(ellipse at 50% -10%, #34305a 0, transparent 60%), var(--bg);
+  color: var(--ink);
+  font-family: var(--body);
+  padding-left: max(12px, env(safe-area-inset-left, 0px));
+  padding-right: max(12px, env(safe-area-inset-right, 0px));
+  padding-block: 8px;
+  box-sizing: border-box;
+  overflow: hidden;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.app { max-width: 560px; height: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 8px; }
+
+.top { display: flex; align-items: center; gap: 8px; }
+.top h1 { flex: 1; text-align: center; font-family: var(--display); font-weight: 400; font-size: 24px; margin: 0; letter-spacing: -.3px; }
+.btn {
+  font-family: var(--display); font-size: 15px; color: var(--ink); text-decoration: none;
+  background: var(--panel); border: 2px solid var(--line); border-radius: 999px;
+  padding: 6px 14px; cursor: pointer; white-space: nowrap;
+}
+.btn:hover { border-color: var(--accent); }
+.btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--well); }
+
+.play { display: grid; grid-template-columns: var(--side) auto var(--side); gap: 8px; justify-content: center; align-items: start; --side: clamp(62px, 19vw, 96px); }
+.side { display: flex; flex-direction: column; gap: 6px; width: var(--side); }
+.box { background: var(--panel); border-radius: 12px; padding: 6px; display: flex; flex-direction: column; gap: 4px; align-items: center; }
+.box canvas { display: block; }
+.box.used canvas { opacity: .35; }
+.lab { font-size: 11px; letter-spacing: .08em; color: var(--muted); align-self: flex-start; }
+.stat { background: var(--panel); border-radius: 12px; padding: 5px 8px; display: flex; flex-direction: column; min-width: 0; }
+.stat b { font-family: var(--display); font-weight: 400; font-size: 17px; line-height: 1.2; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.stat.score b { color: var(--accent); }
+
+.well { position: relative; border: 3px solid var(--panel); border-radius: 10px; background: var(--well); touch-action: none; box-shadow: 0 12px 30px rgba(0, 0, 0, .35); }
+.well canvas { display: block; border-radius: 7px; }
+
+.popup {
+  position: absolute; left: 50%; top: 38%; transform: translate(-50%, -50%);
+  font-family: var(--display); font-size: 26px; color: var(--ink); text-align: center; white-space: nowrap;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, .5), 0 0 14px rgba(255, 122, 168, .7);
+  pointer-events: none; opacity: 0;
+}
+.popup small { display: block; font-size: 15px; color: var(--accent); }
+.popup.show { animation: popup 1s ease-out; }
+@keyframes popup { 0% { opacity: 0; margin-top: 10px; } 15% { opacity: 1; margin-top: 0; } 75% { opacity: 1; } 100% { opacity: 0; margin-top: -20px; } }
+
+.overlay {
+  position: absolute; inset: 0; border-radius: 7px; background: rgba(18, 17, 32, .86);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 12px; text-align: center;
+}
+.overlay h2 { font-family: var(--display); font-weight: 400; font-size: 26px; margin: 0; }
+.overlay p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.overlay .big { font-family: var(--display); font-size: 34px; color: var(--accent); font-variant-numeric: tabular-nums; }
+.overlay .row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+
+.pad { display: none; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: auto; padding-bottom: 4px; }
+.pad button {
+  height: 54px; border-radius: 14px; border: 2px solid var(--line); background: var(--panel); color: var(--ink);
+  font-family: var(--display); font-size: 20px; touch-action: none; cursor: pointer;
+}
+.pad button small { font-size: 13px; }
+.pad button:active, .pad button.on { background: #3a3660; border-color: var(--accent); }
+.pad .wide { grid-column: span 2; }
+.keys { margin: 0; font-size: 12px; color: var(--muted); text-align: center; line-height: 1.6; }
+.keys kbd { font-family: var(--body); background: var(--panel); border: 1px solid var(--line); border-radius: 5px; padding: 0 5px; color: var(--ink); }
+@media (pointer: coarse) { .pad { display: grid; } .keys { display: none; } }
+@media (prefers-reduced-motion: reduce) { .popup.show { animation-duration: .01ms; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <a class="btn" href="../../index.html" aria-label="홈으로">‹ 홈</a>
+    <h1>테트리스</h1>
+    <button class="btn" id="pauseBtn" type="button">일시정지</button>
+  </header>
+
+  <div class="play">
+    <aside class="side">
+      <div class="box" id="holdBox"><span class="lab">홀드</span><canvas id="holdC"></canvas></div>
+      <div class="stat score"><span class="lab">점수</span><b id="score">0</b></div>
+      <div class="stat"><span class="lab">레벨</span><b id="level">1</b></div>
+      <div class="stat"><span class="lab">줄</span><b id="lines">0</b></div>
+      <div class="stat"><span class="lab">최고</span><b id="best">0</b></div>
+    </aside>
+
+    <div class="well" id="well">
+      <canvas id="board" aria-label="게임 판"></canvas>
+      <div class="popup" id="popup"></div>
+      <div class="overlay" id="overlay">
+        <h2 id="ovTitle">테트리스</h2>
+        <div class="big" id="ovScore" hidden>0</div>
+        <p id="ovText">판을 밀어서 이동, 톡 치면 회전,<br>아래로 휙 쓸면 바로 내리기, 위로 쓸면 홀드</p>
+        <div class="row">
+          <button class="btn primary" id="ovMain" type="button">시작</button>
+          <button class="btn" id="ovAlt" type="button" hidden>처음부터</button>
+        </div>
+      </div>
+    </div>
+
+    <aside class="side">
+      <div class="box"><span class="lab">다음</span><canvas id="next0"></canvas><canvas id="next1"></canvas><canvas id="next2"></canvas></div>
+    </aside>
+  </div>
+
+  <div class="pad" id="pad">
+    <button type="button" data-act="hold"><small>홀드</small></button>
+    <button type="button" data-act="ccw" aria-label="반대로 회전">↺</button>
+    <button type="button" data-act="cw" aria-label="회전">↻</button>
+    <button type="button" data-act="hard" aria-label="바로 내리기">⤓</button>
+    <button type="button" data-act="left" aria-label="왼쪽">←</button>
+    <button type="button" data-act="down" aria-label="천천히 내리기">↓</button>
+    <button type="button" data-act="right" aria-label="오른쪽">→</button>
+    <button type="button" data-act="pause" aria-label="일시정지"><small>멈춤</small></button>
+  </div>
+  <p class="keys"><kbd>←</kbd> <kbd>→</kbd> 이동 · <kbd>↓</kbd> 천천히 · <kbd>Space</kbd> 바로 내리기 · <kbd>↑</kbd>/<kbd>X</kbd> 회전 · <kbd>Z</kbd> 반대 회전 · <kbd>C</kbd>/<kbd>Shift</kbd> 홀드 · <kbd>P</kbd> 멈춤</p>
+</div>
+
+<script>
+(() => {
+  const W = 10, H = 20, HID = 2, ROWS = H + HID;          // two hidden rows above the visible well
+  const DAS = 160, ARR = 35, LOCK_DELAY = 500, MAX_RESETS = 15, CLEAR_MS = 180;
+  const BEST_KEY = 'tetris-best';
+  const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const COLORS = { I: '#5ad1e8', O: '#ffd34e', T: '#b07cf0', S: '#7bd66b', Z: '#ff6b7f', J: '#5b8cff', L: '#ff9f4a' };
+  const BASE = {
+    I: [[0, 0, 0, 0], [1, 1, 1, 1], [0, 0, 0, 0], [0, 0, 0, 0]],
+    J: [[1, 0, 0], [1, 1, 1], [0, 0, 0]],
+    L: [[0, 0, 1], [1, 1, 1], [0, 0, 0]],
+    O: [[1, 1], [1, 1]],
+    S: [[0, 1, 1], [1, 1, 0], [0, 0, 0]],
+    T: [[0, 1, 0], [1, 1, 1], [0, 0, 0]],
+    Z: [[1, 1, 0], [0, 1, 1], [0, 0, 0]],
+  };
+  const rotCW = (m) => m.map((row, r) => row.map((_, c) => m[m.length - 1 - c][r]));
+  const SHAPES = {};
+  for (const k in BASE) {
+    const states = [BASE[k]];
+    for (let i = 0; i < 3; i++) states.push(rotCW(states[i]));
+    SHAPES[k] = states.map((m) => m.flatMap((row, y) => row.flatMap((v, x) => (v ? [[x, y]] : []))));
+  }
+  // SRS wall kicks, written as (x, y-up) like the guideline tables; y is flipped when used
+  const KJLSTZ = {
+    '01': [[0, 0], [-1, 0], [-1, 1], [0, -2], [-1, -2]], '10': [[0, 0], [1, 0], [1, -1], [0, 2], [1, 2]],
+    '12': [[0, 0], [1, 0], [1, -1], [0, 2], [1, 2]],     '21': [[0, 0], [-1, 0], [-1, 1], [0, -2], [-1, -2]],
+    '23': [[0, 0], [1, 0], [1, 1], [0, -2], [1, -2]],    '32': [[0, 0], [-1, 0], [-1, -1], [0, 2], [-1, 2]],
+    '30': [[0, 0], [-1, 0], [-1, -1], [0, 2], [-1, 2]],  '03': [[0, 0], [1, 0], [1, 1], [0, -2], [1, -2]],
+  };
+  const KI = {
+    '01': [[0, 0], [-2, 0], [1, 0], [-2, -1], [1, 2]],   '10': [[0, 0], [2, 0], [-1, 0], [2, 1], [-1, -2]],
+    '12': [[0, 0], [-1, 0], [2, 0], [-1, 2], [2, -1]],   '21': [[0, 0], [1, 0], [-2, 0], [1, -2], [-2, 1]],
+    '23': [[0, 0], [2, 0], [-1, 0], [2, 1], [-1, -2]],   '32': [[0, 0], [-2, 0], [1, 0], [-2, -1], [1, 2]],
+    '30': [[0, 0], [1, 0], [-2, 0], [1, -2], [-2, 1]],   '03': [[0, 0], [-1, 0], [2, 0], [-1, 2], [2, -1]],
+  };
+
+  const $ = (s) => document.querySelector(s);
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+  };
+
+  let G = null, state = 'ready';   // ready | play | paused | over
+  const input = { dir: 0, left: false, right: false, soft: false, dasT: 0, arrT: 0 };
+
+  function newGame() {
+    G = {
+      grid: Array.from({ length: ROWS }, () => Array(W).fill(null)),
+      bag: [], queue: [], cur: null, hold: null, canHold: true,
+      score: 0, lines: 0, level: 1, combo: -1, b2b: false,
+      lockT: 0, resets: 0, gravT: 0, clearing: null, lastRotate: false,
+    };
+    fillQueue();
+    spawn();
+  }
+  function fillQueue() {
+    while (G.queue.length < 4) {
+      if (!G.bag.length) {
+        G.bag = Object.keys(BASE);
+        for (let i = G.bag.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [G.bag[i], G.bag[j]] = [G.bag[j], G.bag[i]]; }
+      }
+      G.queue.push(G.bag.pop());
+    }
+  }
+
+  const cellsOf = (p) => SHAPES[p.k][p.r].map(([x, y]) => [p.x + x, p.y + y]);
+  function fits(k, r, x, y) {
+    return SHAPES[k][r].every(([cx, cy]) => {
+      const gx = x + cx, gy = y + cy;
+      return gx >= 0 && gx < W && gy >= 0 && gy < ROWS && !G.grid[gy][gx];
+    });
+  }
+  const onGround = () => !fits(G.cur.k, G.cur.r, G.cur.x, G.cur.y + 1);
+
+  function spawn(k) {
+    if (!k) { k = G.queue.shift(); fillQueue(); }
+    const p = { k, r: 0, x: k === 'O' ? 4 : 3, y: 0 };
+    if (!fits(p.k, p.r, p.x, p.y)) { G.cur = p; return gameOver(); }
+    if (fits(p.k, p.r, p.x, p.y + 1)) p.y++;          // drop into view right away
+    G.cur = p; G.lockT = 0; G.resets = 0; G.gravT = 0; G.lastRotate = false;
+    drawSide();
+  }
+
+  function lockReset() {
+    if (onGround() && G.resets < MAX_RESETS) { G.lockT = 0; G.resets++; }
+  }
+  function move(dx, dy) {
+    const c = G.cur;
+    if (!fits(c.k, c.r, c.x + dx, c.y + dy)) return false;
+    c.x += dx; c.y += dy;
+    if (dy > 0) { G.resets = 0; G.lockT = 0; }
+    else lockReset();
+    G.lastRotate = false;
+    return true;
+  }
+  function rotate(dir) {
+    const c = G.cur;
+    if (c.k === 'O') return false;
+    const to = (c.r + dir + 4) % 4, table = c.k === 'I' ? KI : KJLSTZ;
+    for (const [kx, ky] of table[`${c.r}${to}`]) {
+      if (fits(c.k, to, c.x + kx, c.y - ky)) {
+        c.r = to; c.x += kx; c.y -= ky;
+        lockReset();
+        G.lastRotate = true;
+        return true;
+      }
+    }
+    return false;
+  }
+  function hardDrop() {
+    let n = 0;
+    while (fits(G.cur.k, G.cur.r, G.cur.x, G.cur.y + 1)) { G.cur.y++; n++; }
+    G.score += n * 2;
+    lock();
+  }
+  function hold() {
+    if (!G.canHold) return;
+    const k = G.cur.k, held = G.hold;
+    G.hold = k;
+    G.canHold = false;
+    spawn(held || undefined);
+    drawSide();
+  }
+
+  // T-spin: last move was a rotation and 3 of the 4 corners around the T centre are filled
+  function isTSpin() {
+    const c = G.cur;
+    if (c.k !== 'T' || !G.lastRotate) return false;
+    const corners = [[0, 0], [2, 0], [0, 2], [2, 2]].filter(([x, y]) => {
+      const gx = c.x + x, gy = c.y + y;
+      return gx < 0 || gx >= W || gy >= ROWS || (gy >= 0 && G.grid[gy][gx]);
+    });
+    return corners.length >= 3;
+  }
+
+  function lock() {
+    const c = G.cur, tspin = isTSpin();
+    const cells = cellsOf(c);
+    cells.forEach(([x, y]) => { G.grid[y][x] = c.k; });
+    if (cells.every(([, y]) => y < HID)) return gameOver();
+    const full = [];
+    for (let y = 0; y < ROWS; y++) if (G.grid[y].every(Boolean)) full.push(y);
+    score(full.length, tspin);
+    G.canHold = true;
+    if (full.length) { G.clearing = { rows: full, t: 0 }; G.cur = null; }
+    else spawn();
+    renderStats();
+  }
+
+  function score(n, tspin) {
+    const lv = G.level;
+    let pts = tspin ? [400, 800, 1200, 1600][n] : [0, 100, 300, 500, 800][n];
+    const hard = n === 4 || (tspin && n > 0);
+    let label = tspin ? ['T-스핀', 'T-스핀 싱글', 'T-스핀 더블', 'T-스핀 트리플'][n] : ['', '', '', '', '테트리스!'][n];
+    let sub = '';
+    if (n > 0) {
+      if (hard && G.b2b) { pts *= 1.5; sub = '연속 보너스'; }
+      G.b2b = hard;
+      G.combo++;
+      if (G.combo > 0) { pts += 50 * G.combo * lv; sub = sub ? `${sub} · 콤보 ${G.combo}` : `콤보 ${G.combo}`; }
+    } else {
+      G.combo = -1;
+    }
+    G.score += Math.round(pts * lv);
+    G.lines += n;
+    const newLevel = 1 + Math.floor(G.lines / 10);
+    if (newLevel > G.level) { G.level = newLevel; sub = sub ? `${sub} · 레벨 ${newLevel}` : `레벨 ${newLevel}!`; }
+    if (n > 0 && G.grid.every((row, y) => row.every(Boolean) || row.every((v) => !v))) {
+      G.score += 2000 * lv; label = '퍼펙트 클리어!';
+    }
+    if (label || sub) popup(label, sub);
+  }
+
+  function gameOver() {
+    state = 'over';
+    if (G.score > (+store.get(BEST_KEY) || 0)) store.set(BEST_KEY, String(G.score));
+    renderStats();
+    showOverlay('over');
+  }
+
+  const gravityMs = () => Math.pow(Math.max(0.05, 0.8 - (G.level - 1) * 0.007), G.level - 1) * 1000;
+
+  // ---------- loop ----------
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(50, now - last);
+    last = now;
+    if (state === 'play') step(dt);
+    draw();
+    requestAnimationFrame(frame);
+  }
+  function step(dt) {
+    if (G.clearing) {
+      G.clearing.t += dt;
+      if (G.clearing.t >= (RM ? 0 : CLEAR_MS)) {
+        const rows = new Set(G.clearing.rows);
+        G.grid = G.grid.filter((_, y) => !rows.has(y));
+        while (G.grid.length < ROWS) G.grid.unshift(Array(W).fill(null));
+        G.clearing = null;
+        spawn();
+      }
+      return;
+    }
+    if (!G.cur) return;
+    if (input.dir) {
+      input.dasT += dt;
+      if (input.dasT >= DAS) {
+        input.arrT += dt;
+        while (input.arrT >= ARR) { input.arrT -= ARR; if (!move(input.dir, 0)) break; }
+      }
+    }
+    const interval = input.soft ? Math.min(gravityMs(), 33) : gravityMs();
+    if (onGround()) {
+      G.gravT = 0;
+      G.lockT += dt;
+      if (G.lockT >= LOCK_DELAY) lock();
+      return;
+    }
+    G.gravT += dt;
+    while (G.gravT >= interval && G.cur) {
+      G.gravT -= interval;
+      if (!move(0, 1)) break;
+      if (input.soft) G.score += 1;
+    }
+    if (input.soft) renderStats();
+  }
+
+  // ---------- drawing ----------
+  const boardC = $('#board'), bctx = boardC.getContext('2d');
+  let CELL = 24;
+  function sizeCanvas(c, w, h) {
+    const dpr = window.devicePixelRatio || 1;
+    c.width = Math.round(w * dpr); c.height = Math.round(h * dpr);
+    c.style.width = w + 'px'; c.style.height = h + 'px';
+    const ctx = c.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return ctx;
+  }
+  function block(ctx, x, y, s, color, ghost) {
+    const r = Math.max(2, s * 0.16), pad = Math.max(1, s * 0.05);
+    const bx = x + pad, by = y + pad, bs = s - pad * 2;
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(bx, by, bs, bs, r); else ctx.rect(bx, by, bs, bs);
+    if (ghost) {
+      ctx.fillStyle = color + '22'; ctx.fill();
+      ctx.lineWidth = Math.max(1, s * 0.07); ctx.strokeStyle = color + '99'; ctx.stroke();
+      return;
+    }
+    ctx.fillStyle = color; ctx.fill();
+    ctx.save(); ctx.clip();
+    ctx.fillStyle = 'rgba(255,255,255,.32)'; ctx.fillRect(bx, by, bs, bs * 0.22);
+    ctx.fillStyle = 'rgba(0,0,0,.22)'; ctx.fillRect(bx, by + bs * 0.8, bs, bs * 0.2);
+    ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.fillRect(bx + bs * 0.16, by + bs * 0.32, bs * 0.16, bs * 0.16);
+    ctx.restore();
+  }
+  function layout() {
+    const app = $('.app'), side = $('.side').offsetWidth;
+    const coarse = matchMedia('(pointer: coarse)').matches;
+    const reserved = 8 + $('.top').offsetHeight + 8 + (coarse ? $('#pad').offsetHeight + 12 : $('.keys').offsetHeight + 8) + 16 + 6;
+    const byW = (app.clientWidth - side * 2 - 16 - 6) / W;
+    const byH = (window.innerHeight - reserved) / H;
+    CELL = Math.max(12, Math.min(34, Math.floor(Math.min(byW, byH))));
+    sizeCanvas(boardC, CELL * W, CELL * H);
+    const sw = side - 12;
+    sizeCanvas($('#holdC'), sw, Math.round(sw * 0.62));
+    for (let i = 0; i < 3; i++) sizeCanvas($('#next' + i), sw, Math.round(sw * (i ? 0.52 : 0.62)));
+    drawSide();
+  }
+  function draw() {
+    const ctx = bctx, s = CELL;
+    ctx.clearRect(0, 0, W * s, H * s);
+    ctx.fillStyle = '#121120'; ctx.fillRect(0, 0, W * s, H * s);
+    ctx.strokeStyle = 'rgba(255,255,255,.045)'; ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let x = 1; x < W; x++) { ctx.moveTo(x * s + 0.5, 0); ctx.lineTo(x * s + 0.5, H * s); }
+    for (let y = 1; y < H; y++) { ctx.moveTo(0, y * s + 0.5); ctx.lineTo(W * s, y * s + 0.5); }
+    ctx.stroke();
+    if (!G) return;
+    const flash = G.clearing ? new Set(G.clearing.rows) : null;
+    for (let y = HID; y < ROWS; y++) for (let x = 0; x < W; x++) {
+      const k = G.grid[y][x];
+      if (k) block(ctx, x * s, (y - HID) * s, s, flash && flash.has(y) ? '#ffffff' : COLORS[k]);
+    }
+    if (G.cur && state !== 'over') {
+      const c = G.cur;
+      let gy = c.y;
+      while (fits(c.k, c.r, c.x, gy + 1)) gy++;
+      SHAPES[c.k][c.r].forEach(([x, y]) => { if (gy + y >= HID) block(ctx, (c.x + x) * s, (gy + y - HID) * s, s, COLORS[c.k], true); });
+      SHAPES[c.k][c.r].forEach(([x, y]) => { if (c.y + y >= HID) block(ctx, (c.x + x) * s, (c.y + y - HID) * s, s, COLORS[c.k]); });
+    }
+  }
+  function drawMini(canvas, k) {
+    const dpr = window.devicePixelRatio || 1, w = canvas.width / dpr, h = canvas.height / dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, w, h);
+    if (!k) return;
+    const cells = SHAPES[k][0];
+    const xs = cells.map((c) => c[0]), ys = cells.map((c) => c[1]);
+    const cw = Math.max(...xs) - Math.min(...xs) + 1, ch = Math.max(...ys) - Math.min(...ys) + 1;
+    const s = Math.floor(Math.min(w / 4.4, h / 2.4));
+    const ox = (w - cw * s) / 2 - Math.min(...xs) * s, oy = (h - ch * s) / 2 - Math.min(...ys) * s;
+    cells.forEach(([x, y]) => block(ctx, ox + x * s, oy + y * s, s, COLORS[k]));
+  }
+  function drawSide() {
+    if (!G) return;
+    drawMini($('#holdC'), G.hold);
+    $('#holdBox').classList.toggle('used', !G.canHold);
+    for (let i = 0; i < 3; i++) drawMini($('#next' + i), G.queue[i]);
+  }
+  function renderStats() {
+    $('#score').textContent = G.score.toLocaleString();
+    $('#level').textContent = G.level;
+    $('#lines').textContent = G.lines;
+    $('#best').textContent = Math.max(+store.get(BEST_KEY) || 0, G.score).toLocaleString();
+  }
+  let popT = 0;
+  function popup(text, sub) {
+    const el = $('#popup');
+    el.innerHTML = `${text}${sub ? `<small>${sub}</small>` : ''}`;
+    el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+    clearTimeout(popT); popT = setTimeout(() => el.classList.remove('show'), 1000);
+  }
+
+  // ---------- overlay / states ----------
+  function showOverlay(kind) {
+    const ov = $('#overlay');
+    ov.hidden = kind === null;
+    $('#pauseBtn').textContent = state === 'paused' ? '계속' : '일시정지';
+    if (kind === null) return;
+    const best = Math.max(+store.get(BEST_KEY) || 0, G ? G.score : 0);
+    $('#ovScore').hidden = kind !== 'over';
+    $('#ovAlt').hidden = kind !== 'paused';
+    if (kind === 'paused') {
+      $('#ovTitle').textContent = '일시정지';
+      $('#ovText').textContent = '잠깐 쉬어 가요.';
+      $('#ovMain').textContent = '계속하기';
+    } else if (kind === 'over') {
+      $('#ovTitle').textContent = '게임 오버';
+      $('#ovScore').textContent = G.score.toLocaleString();
+      $('#ovText').textContent = `${G.lines}줄 · 레벨 ${G.level} · 최고 ${best.toLocaleString()}점`;
+      $('#ovMain').textContent = '다시 하기';
+    }
+  }
+  function start() { newGame(); state = 'play'; renderStats(); showOverlay(null); }
+  function pause() { if (state === 'play') { state = 'paused'; clearInput(); showOverlay('paused'); } }
+  function resume() { if (state === 'paused') { state = 'play'; last = performance.now(); showOverlay(null); } }
+  const togglePause = () => (state === 'play' ? pause() : resume());
+  $('#ovMain').addEventListener('click', () => (state === 'paused' ? resume() : start()));
+  $('#ovAlt').addEventListener('click', start);
+  $('#pauseBtn').addEventListener('click', () => { if (state === 'play' || state === 'paused') togglePause(); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
+
+  // ---------- input ----------
+  function clearInput() { input.dir = 0; input.left = input.right = input.soft = false; }
+  const live = () => state === 'play' && G.cur && !G.clearing;
+  function act(a) {
+    if (a === 'pause') return togglePause();
+    if (!live()) return;
+    if (a === 'cw') rotate(1);
+    else if (a === 'ccw') rotate(-1);
+    else if (a === 'hard') hardDrop();
+    else if (a === 'hold') hold();
+    renderStats();
+  }
+  function press(a) {
+    if (a === 'left' || a === 'right') {
+      input[a] = true;
+      input.dir = a === 'left' ? -1 : 1;
+      input.dasT = 0; input.arrT = 0;
+      if (live()) move(input.dir, 0);
+    } else if (a === 'down') input.soft = true;
+    else act(a);
+  }
+  function release(a) {
+    if (a === 'left' || a === 'right') {
+      input[a] = false;
+      const other = a === 'left' ? 'right' : 'left';
+      input.dir = input[other] ? (other === 'left' ? -1 : 1) : 0;
+      input.dasT = 0; input.arrT = 0;
+    } else if (a === 'down') input.soft = false;
+  }
+  const KEYS = {
+    ArrowLeft: 'left', ArrowRight: 'right', ArrowDown: 'down', ' ': 'hard', ArrowUp: 'cw', x: 'cw', X: 'cw',
+    z: 'ccw', Z: 'ccw', Control: 'ccw', c: 'hold', C: 'hold', Shift: 'hold', p: 'pause', P: 'pause', Escape: 'pause',
+  };
+  addEventListener('keydown', (e) => {
+    const a = KEYS[e.key];
+    if (!a) { if (e.key === 'Enter' && (state === 'ready' || state === 'over')) start(); return; }
+    e.preventDefault();
+    if (e.repeat) return;
+    if (state === 'ready' && a === 'hard') return start();
+    press(a);
+  });
+  addEventListener('keyup', (e) => { const a = KEYS[e.key]; if (a) release(a); });
+  addEventListener('blur', clearInput);
+
+  $('#pad').querySelectorAll('button').forEach((b) => {
+    const a = b.dataset.act;
+    b.addEventListener('pointerdown', (e) => { e.preventDefault(); b.setPointerCapture(e.pointerId); b.classList.add('on'); press(a); });
+    const up = () => { b.classList.remove('on'); release(a); };
+    b.addEventListener('pointerup', up);
+    b.addEventListener('pointercancel', up);
+    b.addEventListener('contextmenu', (e) => e.preventDefault());
+  });
+
+  // gestures on the well: drag sideways to move, tap to rotate, flick down to drop, flick up to hold
+  let touch = null;
+  const well = $('#well');
+  well.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('.overlay') || state !== 'play') return;
+    well.setPointerCapture(e.pointerId);
+    touch = { x0: e.clientX, y0: e.clientY, t0: performance.now(), cx: 0, cy: 0, moved: false };
+  });
+  well.addEventListener('pointermove', (e) => {
+    if (!touch || !live()) return;
+    const dx = e.clientX - touch.x0, dy = e.clientY - touch.y0, step = CELL * 0.9;
+    const tx = Math.trunc(dx / step);
+    while (touch.cx < tx) { move(1, 0); touch.cx++; touch.moved = true; }
+    while (touch.cx > tx) { move(-1, 0); touch.cx--; touch.moved = true; }
+    const ty = Math.trunc(dy / step);
+    if (Math.abs(dy) > Math.abs(dx) * 1.3 && ty > touch.cy) {
+      while (touch.cy < ty) { if (move(0, 1)) G.score += 1; touch.cy++; }
+      touch.moved = true;
+      renderStats();
+    }
+  });
+  well.addEventListener('pointerup', (e) => {
+    if (!touch) return;
+    const t = touch; touch = null;
+    if (!live()) return;
+    const dx = e.clientX - t.x0, dy = e.clientY - t.y0, dt = performance.now() - t.t0;
+    const vy = dy / Math.max(1, dt);
+    if (dy > 40 && vy > 0.7 && Math.abs(dy) > Math.abs(dx)) return act('hard');
+    if (dy < -40 && -vy > 0.5 && Math.abs(dy) > Math.abs(dx)) return act('hold');
+    if (!t.moved && Math.hypot(dx, dy) < 12 && dt < 300) {
+      const r = well.getBoundingClientRect();
+      act(e.clientX < r.left + r.width * 0.3 ? 'ccw' : 'cw');
+    }
+  });
+  well.addEventListener('pointercancel', () => { touch = null; });
+
+  // ---------- boot ----------
+  $('#best').textContent = (+store.get(BEST_KEY) || 0).toLocaleString();
+  addEventListener('resize', layout);
+  newGame();               // show a dealt first piece behind the start card
+  layout();
+  renderStats();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

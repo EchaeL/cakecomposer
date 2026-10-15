@@ -71,18 +71,23 @@ a.btn { text-decoration: none; }
 
 .board {
   position: relative;
-  display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px;
+  display: grid; grid-template-columns: repeat(var(--cols, 4), var(--cell, 72px)); gap: 4px;
+  width: max-content; margin: 0 auto;
   padding: 10px; border-radius: 20px;
   background: repeating-conic-gradient(var(--check) 0 25%, var(--cloth) 0 50%) 0 0 / 44px 44px;
   border: 3px solid var(--card);
-  box-sizing: border-box; touch-action: pan-y;
+  box-sizing: border-box; touch-action: pan-x pan-y;
 }
 .wrap {
   width: min(100%, max(250px, calc((100dvh - 350px) * .8)));
-  margin: 0 auto; border-radius: 20px; overflow-y: auto; overscroll-behavior: contain;
+  margin: 0 auto; border-radius: 20px; overflow: auto; overscroll-behavior: contain;
+  scrollbar-gutter: stable both-edges;
   box-shadow: 0 6px 0 var(--check), 0 10px 24px rgba(61,44,42,.10);
   scrollbar-width: thin; transition: max-height .4s ease;
 }
+.view { display: inline-flex; align-items: center; gap: 4px; }
+.view .btn { padding: 6px 12px; min-width: 38px; }
+.view output { min-width: 44px; text-align: center; font-family: var(--display); font-size: 15px; font-variant-numeric: tabular-nums; }
 .grow { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .cell { aspect-ratio: 1; position: relative; display: grid; place-items: center; border-radius: 50%; cursor: pointer; }
 .cell.empty::before {
@@ -190,9 +195,15 @@ a.btn { text-decoration: none; }
 
   <div class="tools">
     <button class="btn" id="shuffleBtn" type="button">접시 바꾸기 · <span id="shufN">3</span></button>
-    <span class="grow" id="grow"></span>
+    <div class="view" role="group" aria-label="보기 크기">
+      <button class="btn" id="zoomOut" type="button" aria-label="작게 보기 (접시 더 많이)">−</button>
+      <output id="zoomLabel">100%</output>
+      <button class="btn" id="zoomIn" type="button" aria-label="크게 보기">+</button>
+      <button class="btn" id="zoomFit" type="button">전체</button>
+    </div>
   </div>
-  <p class="help">쟁반의 접시를 쓰면 그 자리에 바로 새 접시가 채워져요. 접시를 테이블 빈칸으로 끌어다 놓거나, 눌러서 고른 뒤 빈칸을 누르세요. 위·아래·옆으로 붙은 접시끼리 같은 케이크 조각이 한쪽으로 모이고, 한 접시가 같은 케이크 6조각으로 채워지면 완성되어 사라져요. 케이크를 8판 완성할 때마다 테이블이 한 줄씩 끝없이 늘어나요. 판이 꽉 차면 끝!</p>
+  <span class="grow" id="grow"></span>
+  <p class="help">쟁반의 접시를 쓰면 그 자리에 바로 새 접시가 채워져요. 접시를 테이블 빈칸으로 끌어다 놓거나, 눌러서 고른 뒤 빈칸을 누르세요. 위·아래·옆으로 붙은 접시끼리 같은 케이크 조각이 한쪽으로 모이고, 한 접시가 같은 케이크 6조각으로 채워지면 완성되어 사라져요. 케이크를 8판 완성할 때마다 테이블이 아래로 한 줄, 옆으로 한 칸씩 번갈아 끝없이 늘어나요. − 버튼이나 두 손가락으로 오므리면 더 많은 접시가 한 화면에 들어와요. 판이 꽉 차면 끝!</p>
 </div>
 
 <div class="over" id="over" hidden>
@@ -207,7 +218,8 @@ a.btn { text-decoration: none; }
 
 <script>
 (() => {
-  const COLS = 4, START_ROWS = 5, GROW_EVERY = 8, MAX = 6;
+  const START_COLS = 4, START_ROWS = 5, GROW_EVERY = 8, MAX = 6;
+  const ZOOMS = [1, 0.85, 0.72, 0.6, 0.5, 0.42, 0.35];
   const SAVE_KEY = 'cake-merge-v2', BEST_KEY = 'cake-merge-best';
   const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const T_FLY = RM ? 10 : 280, T_GAP = RM ? 0 : 70;
@@ -249,7 +261,7 @@ a.btn { text-decoration: none; }
 
   let S = null, busy = false, sel = -1, drag = null, cells = [];
   const slots = [];
-  const N = () => S.rows * COLS;
+  const N = () => S.rows * S.cols;
 
   // ---------- drawing ----------
   const pt = (deg, r) => { const a = deg * Math.PI / 180; return [(Math.cos(a) * r).toFixed(2), (Math.sin(a) * r).toFixed(2)]; };
@@ -275,7 +287,7 @@ a.btn { text-decoration: none; }
 
   // ---------- state ----------
   function fresh() {
-    return { rows: START_ROWS, board: Array(START_ROWS * COLS).fill(null), tray: [null, null, null], score: 0, clears: 0, combo: 0, shuffles: 3, over: false };
+    return { rows: START_ROWS, cols: START_COLS, zoom: 0, board: Array(START_ROWS * START_COLS).fill(null), tray: [null, null, null], score: 0, clears: 0, combo: 0, shuffles: 3, over: false };
   }
   const bestScore = () => Math.max(+store.get(BEST_KEY) || 0, S ? S.score : 0);
   const typeCount = () => Math.min(CAKES.length, 4 + Math.floor(S.clears / 6));
@@ -286,12 +298,12 @@ a.btn { text-decoration: none; }
   };
   function valid(d) {
     const okPlate = (p) => p === null || (p && Array.isArray(p.s) && p.s.every((g) => g.t >= 0 && g.t < CAKES.length && g.n > 0) && total(p) <= MAX);
-    return d && d.rows >= START_ROWS && Array.isArray(d.board) && d.board.length === d.rows * COLS &&
+    return d && d.rows >= START_ROWS && Array.isArray(d.board) && d.board.length === d.rows * (d.cols || START_COLS) &&
       Array.isArray(d.tray) && d.tray.length === 3 && d.board.concat(d.tray).every(okPlate);
   }
 
   const nbrs = (i) => {
-    const r = Math.floor(i / COLS), c = i % COLS, out = [];
+    const COLS = S.cols, r = Math.floor(i / COLS), c = i % COLS, out = [];
     if (r > 0) out.push(i - COLS);
     if (r < S.rows - 1) out.push(i + COLS);
     if (c > 0) out.push(i - 1);
@@ -383,11 +395,42 @@ a.btn { text-decoration: none; }
       slots.push(el);
     }
   }
+  // At 100% four plates fill the width; zooming out shrinks plates so more of the table fits.
+  const PAD = 26, GAP = 4;
+  function baseCell() { return Math.max(40, ($('#wrap').clientWidth - PAD - GAP * (START_COLS - 1)) / START_COLS); }
+  const cellFor = (z) => Math.max(26, Math.floor(baseCell() * ZOOMS[z]));
   function fitWrap() {
+    const wrap = $('#wrap'), board = $('#board'), base = baseCell();
+    S.zoom = Math.min(Math.max(0, S.zoom | 0), ZOOMS.length - 1);
+    board.style.setProperty('--cols', S.cols);
+    board.style.setProperty('--cell', cellFor(S.zoom) + 'px');
+    wrap.style.maxHeight = Math.round((base + GAP) * (START_ROWS + 0.45) + PAD) + 'px';
+    $('#zoomLabel').textContent = Math.round(ZOOMS[S.zoom] * 100) + '%';
+    $('#zoomOut').disabled = S.zoom >= ZOOMS.length - 1;
+    $('#zoomIn').disabled = S.zoom <= 0;
+  }
+  function setZoom(z, anchor) {
+    z = Math.min(Math.max(0, z), ZOOMS.length - 1);
+    if (z === S.zoom) return;
     const wrap = $('#wrap');
-    if (S.rows <= START_ROWS || !cells.length) { wrap.style.maxHeight = ''; return; }
-    const ch = cells[0].getBoundingClientRect().height;
-    wrap.style.maxHeight = Math.round((ch + 4) * (START_ROWS + 0.45) + 26) + 'px';
+    // keep the middle of the view in place while zooming
+    const fx = (wrap.scrollLeft + wrap.clientWidth / 2) / Math.max(1, wrap.scrollWidth);
+    const fy = (wrap.scrollTop + wrap.clientHeight / 2) / Math.max(1, wrap.scrollHeight);
+    S.zoom = z;
+    fitWrap();
+    wrap.scrollLeft = fx * wrap.scrollWidth - wrap.clientWidth / 2;
+    wrap.scrollTop = fy * wrap.scrollHeight - wrap.clientHeight / 2;
+    save();
+  }
+  function zoomToFit() {
+    const wrap = $('#wrap'), maxH = parseFloat(wrap.style.maxHeight) || Infinity;
+    let z = 0;
+    while (z < ZOOMS.length - 1) {
+      const c = cellFor(z);
+      if (S.cols * (c + GAP) - GAP + PAD <= wrap.clientWidth && S.rows * (c + GAP) - GAP + PAD <= maxH) break;
+      z++;
+    }
+    setZoom(z);
   }
   function renderCell(i, anim) {
     const p = S.board[i], el = cells[i];
@@ -417,7 +460,8 @@ a.btn { text-decoration: none; }
     $('#shufN').textContent = S.shuffles;
     $('#shuffleBtn').disabled = S.shuffles <= 0 || S.over;
     const left = GROW_EVERY - (S.clears % GROW_EVERY);
-    $('#grow').textContent = `테이블 ${S.rows}줄 · 다음 줄까지 ${left}판`;
+    const nextIsRow = (Math.floor(S.clears / GROW_EVERY) + 1) % 2 === 1;
+    $('#grow').textContent = `테이블 ${S.cols}×${S.rows} · ${left}판 더 완성하면 ${nextIsRow ? '아래로 한 줄' : '옆으로 한 칸'} 늘어나요`;
     const T = typeCount();
     $('#case').innerHTML = '<span>진열대</span>' + CAKES.map((c, i) => i < T
       ? `<span class="chip"><span class="dot" style="background:${c.top}"></span>${c.name}</span>`
@@ -540,18 +584,21 @@ a.btn { text-decoration: none; }
   }
 
   function growTable() {
-    const target = START_ROWS + Math.floor(S.clears / GROW_EVERY);
-    if (target <= S.rows) return false;
-    const added = (target - S.rows) * COLS;
-    S.rows = target;
-    S.board = S.board.concat(Array(added).fill(null));
+    // growth alternates: a row below, then a column to the right, then a row ...
+    const k = Math.floor(S.clears / GROW_EVERY);
+    const rows = Math.max(S.rows, START_ROWS + Math.ceil(k / 2));
+    const cols = Math.max(S.cols, START_COLS + Math.floor(k / 2));
+    if (rows === S.rows && cols === S.cols) return false;
+    const oldR = S.rows, oldC = S.cols, nb = Array(rows * cols).fill(null);
+    for (let r = 0; r < oldR; r++) for (let c = 0; c < oldC; c++) nb[r * cols + c] = S.board[r * oldC + c];
+    S.rows = rows; S.cols = cols; S.board = nb;
     buildBoard();
-    renderBoard();
     fitWrap();
-    for (let i = N() - added; i < N(); i++) { cells[i].classList.add('drop'); }
-    const wrap = $('#wrap');
-    wrap.scrollTo({ top: wrap.scrollHeight, behavior: RM ? 'auto' : 'smooth' });
-    toast('테이블이 한 줄 늘어났어요!');
+    renderBoard();
+    for (let i = 0; i < N(); i++) if (Math.floor(i / cols) >= oldR || i % cols >= oldC) cells[i].classList.add('drop');
+    const wrap = $('#wrap'), behavior = RM ? 'auto' : 'smooth';
+    if (cols > oldC) { wrap.scrollTo({ left: wrap.scrollWidth, behavior }); toast('테이블이 옆으로 한 칸 넓어졌어요!'); }
+    else { wrap.scrollTo({ top: wrap.scrollHeight, behavior }); toast('테이블이 아래로 한 줄 늘어났어요!'); }
     return true;
   }
 
@@ -612,11 +659,14 @@ a.btn { text-decoration: none; }
     const c = el && el.closest('.cell');
     return c ? +c.dataset.i : -1;
   }
-  function autoScroll(y) {
+  function autoScroll(x, y) {
     const wrap = $('#wrap'), r = wrap.getBoundingClientRect();
-    if (wrap.scrollHeight <= wrap.clientHeight) return;
     if (y < r.top + 40 && y > r.top - 60) wrap.scrollTop -= 10;
     else if (y > r.bottom - 40 && y < r.bottom + 80) wrap.scrollTop += 10;
+    if (y > r.top && y < r.bottom) {
+      if (x < r.left + 36) wrap.scrollLeft -= 10;
+      else if (x > r.right - 36) wrap.scrollLeft += 10;
+    }
   }
   function bindSlot(el, i) {
     el.addEventListener('pointerdown', (e) => {
@@ -641,7 +691,7 @@ a.btn { text-decoration: none; }
       if (drag.moved) {
         const x = e.clientX, y = e.clientY - drag.lift;
         drag.ghost.style.transform = `translate(${x - drag.w / 2}px, ${y - drag.w / 2}px) scale(1.08)`;
-        autoScroll(y);
+        autoScroll(x, y);
         const t = cellAt(x, y);
         if (t !== drag.target) { drag.target = t; setHint(t, S.tray[i]); }
       }
@@ -696,6 +746,26 @@ a.btn { text-decoration: none; }
     renderTray(true); renderStats(); save();
   });
   addEventListener('resize', () => S && fitWrap());
+  $('#zoomOut').addEventListener('click', () => setZoom(S.zoom + 1));
+  $('#zoomIn').addEventListener('click', () => setZoom(S.zoom - 1));
+  $('#zoomFit').addEventListener('click', zoomToFit);
+  // ctrl/⌘ + wheel and two-finger pinch on the table also zoom
+  $('#wrap').addEventListener('wheel', (e) => {
+    if (!e.ctrlKey && !e.metaKey) return;
+    e.preventDefault();
+    setZoom(S.zoom + (e.deltaY > 0 ? 1 : -1));
+  }, { passive: false });
+  let pinch = null;
+  const span = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+  $('#wrap').addEventListener('touchstart', (e) => { if (e.touches.length === 2) pinch = span(e.touches); }, { passive: true });
+  $('#wrap').addEventListener('touchmove', (e) => {
+    if (e.touches.length !== 2 || !pinch) return;
+    e.preventDefault();
+    const d = span(e.touches), ratio = d / pinch;
+    if (ratio < 0.82) { setZoom(S.zoom + 1); pinch = d; }
+    else if (ratio > 1.22) { setZoom(S.zoom - 1); pinch = d; }
+  }, { passive: false });
+  $('#wrap').addEventListener('touchend', (e) => { if (e.touches.length < 2) pinch = null; });
 
   // ---------- boot ----------
   function start(data) {
@@ -706,6 +776,7 @@ a.btn { text-decoration: none; }
     if (!slots.length) buildTray();
     buildBoard();
     renderAll();
+    if (growTable()) renderStats();
     renderTray(true);
     save();
   }
