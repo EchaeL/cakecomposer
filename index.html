@@ -121,8 +121,23 @@ h1 span { color: var(--accent); }
       best: () => +store('tetris-best') || 0,
       resume: () => false,
     },
+    {
+      name: '무한 2048',
+      desc: '같은 숫자를 밀어 합치는 퍼즐. 2048에서 끝나지 않고 끝없이 이어지고, 언제든 이어서 할 수 있어요.',
+      href: 'games/2048/index.html',
+      art: art2048(),
+      tint: '#cbdde2',
+      best: () => +store('2048-best') || 0,
+      resume: () => { try { const s = JSON.parse(store('2048-v1')); return !!(s && !s.over && s.score > 0); } catch (e) { return false; } },
+    },
   ];
   const EMPTY_SLOTS = 1;
+
+  function art2048() {
+    const t = [[0, 0, '#62cfb9', '16'], [1, 0, '#ffc145', '256'], [0, 1, '#ff5d7a', '2048'], [1, 1, '#e1f3f0', '2']];
+    return '<svg viewBox="0 0 80 80" aria-hidden="true">' + t.map(([x, y, c, v]) =>
+      `<rect x="${x * 40 + 2}" y="${y * 40 + 2}" width="36" height="36" rx="7" fill="${c}"/><text x="${x * 40 + 20}" y="${y * 40 + 25}" text-anchor="middle" font-family="Jua, sans-serif" font-size="${v.length > 3 ? 11 : 14}" fill="${v === '2' ? '#23404a' : '#fff'}">${v}</text>`).join('') + '</svg>';
+  }
 
   function tetrisArt() {
     const cells = [[1, 0, '#b07cf0'], [0, 1, '#b07cf0'], [1, 1, '#b07cf0'], [2, 1, '#b07cf0'],

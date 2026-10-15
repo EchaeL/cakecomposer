@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jua&family=Gowun+Dodum&display=swap">
 <style>
-/* Layout: night arcade cabinet — hold + stats on the left, the well in the middle, next queue on the right, touch pad below */
+/* Layout: night arcade cabinet — stats row on top, hold on the left, the well in the middle, next queue on the right, gesture hint below; the whole screen takes swipes and taps */
 :root {
   --bg: #1c1a2e;
   --panel: #282541;
@@ -37,7 +37,7 @@ body {
   -webkit-user-select: none;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
+  touch-action: none;
 }
 .app { max-width: 560px; height: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 8px; }
 
@@ -52,17 +52,18 @@ body {
 .btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--well); }
 
-.play { display: grid; grid-template-columns: var(--side) auto var(--side); gap: 8px; justify-content: center; align-items: start; --side: clamp(62px, 19vw, 96px); }
+.play { display: grid; grid-template-columns: var(--side) auto var(--side); gap: 8px; justify-content: center; align-items: start; --side: clamp(58px, 15vw, 92px); }
 .side { display: flex; flex-direction: column; gap: 6px; width: var(--side); }
 .box { background: var(--panel); border-radius: 12px; padding: 6px; display: flex; flex-direction: column; gap: 4px; align-items: center; }
 .box canvas { display: block; }
 .box.used canvas { opacity: .35; }
 .lab { font-size: 11px; letter-spacing: .08em; color: var(--muted); align-self: flex-start; }
+.statrow { display: grid; grid-template-columns: 1.4fr .9fr .9fr 1.2fr; gap: 6px; }
 .stat { background: var(--panel); border-radius: 12px; padding: 5px 8px; display: flex; flex-direction: column; min-width: 0; }
 .stat b { font-family: var(--display); font-weight: 400; font-size: 17px; line-height: 1.2; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .stat.score b { color: var(--accent); }
 
-.well { position: relative; border: 3px solid var(--panel); border-radius: 10px; background: var(--well); touch-action: none; box-shadow: 0 12px 30px rgba(0, 0, 0, .35); }
+.well { position: relative; border: 3px solid var(--panel); border-radius: 10px; background: var(--well); box-shadow: 0 12px 30px rgba(0, 0, 0, .35); }
 .well canvas { display: block; border-radius: 7px; }
 
 .popup {
@@ -84,17 +85,10 @@ body {
 .overlay .big { font-family: var(--display); font-size: 34px; color: var(--accent); font-variant-numeric: tabular-nums; }
 .overlay .row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
 
-.pad { display: none; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: auto; padding-bottom: 4px; }
-.pad button {
-  height: 54px; border-radius: 14px; border: 2px solid var(--line); background: var(--panel); color: var(--ink);
-  font-family: var(--display); font-size: 20px; touch-action: none; cursor: pointer;
-}
-.pad button small { font-size: 13px; }
-.pad button:active, .pad button.on { background: #3a3660; border-color: var(--accent); }
-.pad .wide { grid-column: span 2; }
 .keys { margin: 0; font-size: 12px; color: var(--muted); text-align: center; line-height: 1.6; }
 .keys kbd { font-family: var(--body); background: var(--panel); border: 1px solid var(--line); border-radius: 5px; padding: 0 5px; color: var(--ink); }
-@media (pointer: coarse) { .pad { display: grid; } .keys { display: none; } }
+.hint { margin: 0; font-size: 12px; color: var(--muted); text-align: center; line-height: 1.6; display: none; }
+@media (pointer: coarse) { .keys { display: none; } .hint { display: block; } }
 @media (prefers-reduced-motion: reduce) { .popup.show { animation-duration: .01ms; } }
 </style>
 </head>
@@ -106,13 +100,16 @@ body {
     <button class="btn" id="pauseBtn" type="button">일시정지</button>
   </header>
 
+  <div class="statrow">
+    <div class="stat score"><span class="lab">점수</span><b id="score">0</b></div>
+    <div class="stat"><span class="lab">레벨</span><b id="level">1</b></div>
+    <div class="stat"><span class="lab">줄</span><b id="lines">0</b></div>
+    <div class="stat"><span class="lab">최고</span><b id="best">0</b></div>
+  </div>
+
   <div class="play">
     <aside class="side">
       <div class="box" id="holdBox"><span class="lab">홀드</span><canvas id="holdC"></canvas></div>
-      <div class="stat score"><span class="lab">점수</span><b id="score">0</b></div>
-      <div class="stat"><span class="lab">레벨</span><b id="level">1</b></div>
-      <div class="stat"><span class="lab">줄</span><b id="lines">0</b></div>
-      <div class="stat"><span class="lab">최고</span><b id="best">0</b></div>
     </aside>
 
     <div class="well" id="well">
@@ -121,7 +118,7 @@ body {
       <div class="overlay" id="overlay">
         <h2 id="ovTitle">테트리스</h2>
         <div class="big" id="ovScore" hidden>0</div>
-        <p id="ovText">판을 밀어서 이동, 톡 치면 회전,<br>아래로 휙 쓸면 바로 내리기, 위로 쓸면 홀드</p>
+        <p id="ovText">화면을 밀어서 이동, 톡 치면 회전,<br>아래로 휙 쓸면 바로 내리기, 위로 쓸면 홀드</p>
         <div class="row">
           <button class="btn primary" id="ovMain" type="button">시작</button>
           <button class="btn" id="ovAlt" type="button" hidden>처음부터</button>
@@ -134,16 +131,7 @@ body {
     </aside>
   </div>
 
-  <div class="pad" id="pad">
-    <button type="button" data-act="hold"><small>홀드</small></button>
-    <button type="button" data-act="ccw" aria-label="반대로 회전">↺</button>
-    <button type="button" data-act="cw" aria-label="회전">↻</button>
-    <button type="button" data-act="hard" aria-label="바로 내리기">⤓</button>
-    <button type="button" data-act="left" aria-label="왼쪽">←</button>
-    <button type="button" data-act="down" aria-label="천천히 내리기">↓</button>
-    <button type="button" data-act="right" aria-label="오른쪽">→</button>
-    <button type="button" data-act="pause" aria-label="일시정지"><small>멈춤</small></button>
-  </div>
+  <p class="hint">화면 어디서든 좌우로 밀어 이동 · 톡 치면 회전 (왼쪽 가장자리는 반대 회전) · 아래로 휙 바로 내리기 · 천천히 끌어내리면 천천히 · 위로 쓸면 홀드</p>
   <p class="keys"><kbd>←</kbd> <kbd>→</kbd> 이동 · <kbd>↓</kbd> 천천히 · <kbd>Space</kbd> 바로 내리기 · <kbd>↑</kbd>/<kbd>X</kbd> 회전 · <kbd>Z</kbd> 반대 회전 · <kbd>C</kbd>/<kbd>Shift</kbd> 홀드 · <kbd>P</kbd> 멈춤</p>
 </div>
 
@@ -151,7 +139,7 @@ body {
 (() => {
   const W = 10, H = 20, HID = 2, ROWS = H + HID;          // two hidden rows above the visible well
   const DAS = 160, ARR = 35, LOCK_DELAY = 500, MAX_RESETS = 15, CLEAR_MS = 180;
-  const BEST_KEY = 'tetris-best';
+  const BEST_KEY = 'tetris-best', MAX_LEVEL = 15;
   const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   const COLORS = { I: '#5ad1e8', O: '#ffd34e', T: '#b07cf0', S: '#7bd66b', Z: '#ff6b7f', J: '#5b8cff', L: '#ff9f4a' };
@@ -314,8 +302,12 @@ body {
     }
     G.score += Math.round(pts * lv);
     G.lines += n;
-    const newLevel = 1 + Math.floor(G.lines / 10);
-    if (newLevel > G.level) { G.level = newLevel; sub = sub ? `${sub} · 레벨 ${newLevel}` : `레벨 ${newLevel}!`; }
+    const newLevel = Math.min(MAX_LEVEL, 1 + Math.floor(G.lines / 10));
+    if (newLevel > G.level) {
+      G.level = newLevel;
+      const msg = newLevel === MAX_LEVEL ? '최고 레벨!' : `레벨 ${newLevel}`;
+      sub = sub ? `${sub} · ${msg}` : msg;
+    }
     if (n > 0 && G.grid.every((row, y) => row.every(Boolean) || row.every((v) => !v))) {
       G.score += 2000 * lv; label = '퍼펙트 클리어!';
     }
@@ -407,10 +399,10 @@ body {
   function layout() {
     const app = $('.app'), side = $('.side').offsetWidth;
     const coarse = matchMedia('(pointer: coarse)').matches;
-    const reserved = 8 + $('.top').offsetHeight + 8 + (coarse ? $('#pad').offsetHeight + 12 : $('.keys').offsetHeight + 8) + 16 + 6;
+    const reserved = 8 + $('.top').offsetHeight + 8 + $('.statrow').offsetHeight + 8 + (coarse ? $('.hint').offsetHeight + 8 : $('.keys').offsetHeight + 8) + 16 + 6;
     const byW = (app.clientWidth - side * 2 - 16 - 6) / W;
     const byH = (window.innerHeight - reserved) / H;
-    CELL = Math.max(12, Math.min(34, Math.floor(Math.min(byW, byH))));
+    CELL = Math.max(12, Math.min(36, Math.floor(Math.min(byW, byH))));
     sizeCanvas(boardC, CELL * W, CELL * H);
     const sw = side - 12;
     sizeCanvas($('#holdC'), sw, Math.round(sw * 0.62));
@@ -460,7 +452,7 @@ body {
   }
   function renderStats() {
     $('#score').textContent = G.score.toLocaleString();
-    $('#level').textContent = G.level;
+    $('#level').textContent = G.level === MAX_LEVEL ? `${G.level} 최고` : G.level;
     $('#lines').textContent = G.lines;
     $('#best').textContent = Math.max(+store.get(BEST_KEY) || 0, G.score).toLocaleString();
   }
@@ -545,21 +537,12 @@ body {
   addEventListener('keyup', (e) => { const a = KEYS[e.key]; if (a) release(a); });
   addEventListener('blur', clearInput);
 
-  $('#pad').querySelectorAll('button').forEach((b) => {
-    const a = b.dataset.act;
-    b.addEventListener('pointerdown', (e) => { e.preventDefault(); b.setPointerCapture(e.pointerId); b.classList.add('on'); press(a); });
-    const up = () => { b.classList.remove('on'); release(a); };
-    b.addEventListener('pointerup', up);
-    b.addEventListener('pointercancel', up);
-    b.addEventListener('contextmenu', (e) => e.preventDefault());
-  });
-
-  // gestures on the well: drag sideways to move, tap to rotate, flick down to drop, flick up to hold
+  // gestures anywhere on screen: drag sideways to move, tap to rotate, flick down to drop, flick up to hold
   let touch = null;
-  const well = $('#well');
+  const well = document.body;
   well.addEventListener('pointerdown', (e) => {
-    if (e.target.closest('.overlay') || state !== 'play') return;
-    well.setPointerCapture(e.pointerId);
+    if (e.target.closest('button, a, .overlay') || state !== 'play' || e.button > 0) return;
+    try { well.setPointerCapture(e.pointerId); } catch (err) {}
     touch = { x0: e.clientX, y0: e.clientY, t0: performance.now(), cx: 0, cy: 0, moved: false };
   });
   well.addEventListener('pointermove', (e) => {
@@ -584,8 +567,7 @@ body {
     if (dy > 40 && vy > 0.7 && Math.abs(dy) > Math.abs(dx)) return act('hard');
     if (dy < -40 && -vy > 0.5 && Math.abs(dy) > Math.abs(dx)) return act('hold');
     if (!t.moved && Math.hypot(dx, dy) < 12 && dt < 300) {
-      const r = well.getBoundingClientRect();
-      act(e.clientX < r.left + r.width * 0.3 ? 'ccw' : 'cw');
+      act(e.clientX < window.innerWidth * 0.25 ? 'ccw' : 'cw');
     }
   });
   well.addEventListener('pointercancel', () => { touch = null; });
