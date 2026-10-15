@@ -3,707 +3,148 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>케이크 합치기</title>
+<title>놀이 상자</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jua&family=Gowun+Dodum&display=swap">
 <style>
-/* Layout: one-screen bakery table — score bar, display case of cakes, checkered tablecloth board, wooden serving tray */
+/* Layout: a toy shelf — big hand-lettered name, then a column of game boxes; empty shelf spots wait for new games */
 :root {
-  --cloth: #eaf4ee;
-  --check: #d5eadf;
-  --ink: #3d2c2a;
-  --muted: #86706a;
-  --wood: #c8915c;
-  --wood-dark: #9c6436;
+  --ground: #f3eefb;
+  --shelf: #c8915c;
+  --shelf-dark: #9c6436;
+  --ink: #33283f;
+  --muted: #7d7189;
+  --card: #fffdfa;
   --accent: #e0507a;
-  --card: #fffaf7;
-  --line: rgba(61, 44, 42, .14);
+  --line: rgba(51, 40, 63, .14);
   --display: 'Jua', 'Gowun Dodum', system-ui, sans-serif;
   --body: 'Gowun Dodum', system-ui, -apple-system, 'Apple SD Gothic Neo', sans-serif;
   color-scheme: light;
 }
-html, body { height: 100%; }
 [hidden] { display: none !important; }
+html, body { min-height: 100%; }
 body {
-  background: var(--cloth);
+  background:
+    radial-gradient(circle at 12% 8%, rgba(224, 80, 122, .10) 0 120px, transparent 121px),
+    radial-gradient(circle at 92% 30%, rgba(120, 180, 150, .14) 0 90px, transparent 91px),
+    var(--ground);
   color: var(--ink);
   font-family: var(--body);
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
-  padding-block: 10px;
+  padding-block: 28px 40px;
   box-sizing: border-box;
-  overflow-x: hidden;
-  -webkit-user-select: none;
-  user-select: none;
-  -webkit-tap-highlight-color: transparent;
 }
-.app { max-width: 440px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; }
-
-.top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-h1 { font-family: var(--display); font-weight: 400; font-size: 28px; margin: 0; letter-spacing: -.5px; color: var(--ink); text-wrap: balance; }
+.app { max-width: 520px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+header { display: flex; flex-direction: column; gap: 6px; }
+h1 { font-family: var(--display); font-weight: 400; font-size: 44px; line-height: 1.05; margin: 0; letter-spacing: -1px; text-wrap: balance; }
 h1 span { color: var(--accent); }
+.sub { margin: 0; color: var(--muted); font-size: 15px; }
 
-.btn {
-  font-family: var(--display); font-size: 15px; color: var(--ink);
-  background: var(--card); border: 2px solid var(--line); border-radius: 999px;
-  padding: 6px 14px; cursor: pointer; white-space: nowrap;
-}
-.btn:hover { border-color: var(--accent); }
-.btn:focus-visible, .switch input:focus-visible + .knob { outline: 3px solid var(--accent); outline-offset: 2px; }
-.btn.warn { background: var(--accent); color: var(--card); border-color: var(--accent); }
-.btn:disabled { opacity: .45; cursor: default; }
-
-.stats { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 8px; }
-.stat { background: var(--card); border-radius: 14px; padding: 6px 12px; display: flex; flex-direction: column; }
-.stat .lab { font-size: 11px; letter-spacing: .08em; color: var(--muted); }
-.stat b { font-family: var(--display); font-weight: 400; font-size: 22px; font-variant-numeric: tabular-nums; line-height: 1.15; }
-.stat:first-child b { color: var(--accent); }
-
-.case { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; font-size: 12px; color: var(--muted); min-height: 18px; }
-.case .chip { display: inline-flex; align-items: center; gap: 4px; }
-.case .dot { width: 11px; height: 11px; border-radius: 50%; box-shadow: inset 0 -2px 0 rgba(0,0,0,.18); }
-.case .chip.locked { opacity: .45; }
-.case .chip.locked .dot { background: var(--line) !important; }
-
+.shelf { display: flex; flex-direction: column; gap: 14px; }
+.shelf-label { font-size: 12px; letter-spacing: .1em; color: var(--muted); }
 .board {
-  position: relative;
-  display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px;
-  padding: 10px; border-radius: 20px;
-  background: repeating-conic-gradient(var(--check) 0 25%, var(--cloth) 0 50%) 0 0 / 44px 44px;
-  border: 3px solid var(--card);
-  box-sizing: border-box; touch-action: pan-y;
-}
-.wrap {
-  width: min(100%, max(250px, calc((100dvh - 350px) * .8)));
-  margin: 0 auto; border-radius: 20px; overflow-y: auto; overscroll-behavior: contain;
-  box-shadow: 0 6px 0 var(--check), 0 10px 24px rgba(61,44,42,.10);
-  scrollbar-width: thin; transition: max-height .4s ease;
-}
-.grow { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.cell { aspect-ratio: 1; position: relative; display: grid; place-items: center; border-radius: 50%; cursor: pointer; }
-.cell.empty::before {
-  content: ''; position: absolute; inset: 9%; border-radius: 50%;
-  border: 2px dashed var(--line); transition: background .15s, border-color .15s;
-}
-.cell.can::before { border-color: rgba(224, 80, 122, .35); }
-.cell.hint::before { border-color: var(--accent); border-style: solid; background: rgba(224, 80, 122, .12); }
-.cell svg { width: 100%; height: 100%; display: block; overflow: visible; }
-.cell.glow svg { animation: wiggle .5s ease-in-out infinite alternate; filter: drop-shadow(0 0 6px rgba(255, 196, 0, .9)); }
-
-.tray {
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
-  padding: 10px 14px; border-radius: 18px;
-  background:
-    repeating-linear-gradient(90deg, rgba(255,255,255,.06) 0 3px, transparent 3px 22px),
-    linear-gradient(var(--wood), var(--wood-dark));
-  box-shadow: inset 0 3px 0 rgba(255,255,255,.25), inset 0 -4px 0 rgba(0,0,0,.15), 0 6px 14px rgba(61,44,42,.18);
-  width: min(100%, max(250px, calc((100dvh - 350px) * .8))); margin: 0 auto; box-sizing: border-box;
-  touch-action: none;
-}
-.slot { aspect-ratio: 1; max-height: 92px; justify-self: center; width: 100%; display: grid; place-items: center; border-radius: 50%; cursor: grab; position: relative; border: none; background: none; padding: 0; }
-.slot svg { width: 88%; height: 88%; display: block; filter: drop-shadow(0 4px 2px rgba(0,0,0,.2)); transition: transform .15s; }
-.slot.sel svg { transform: translateY(-6px) scale(1.06); filter: drop-shadow(0 8px 4px rgba(0,0,0,.25)); }
-.slot.sel::after { content: ''; position: absolute; inset: 2%; border-radius: 50%; border: 3px solid var(--card); }
-.slot.lifting svg { opacity: .25; }
-.slot.in svg { animation: slidein .35s cubic-bezier(.2,.9,.3,1.3) both; }
-.slot:nth-child(2).in svg { animation-delay: .06s; }
-.slot:nth-child(3).in svg { animation-delay: .12s; }
-
-.tools { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
-.switch { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); cursor: pointer; }
-.switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
-.switch .knob { width: 36px; height: 20px; border-radius: 999px; background: var(--line); position: relative; transition: background .2s; }
-.switch .knob::after { content: ''; position: absolute; left: 2px; top: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--card); transition: transform .2s; }
-.switch input:checked + .knob { background: var(--accent); }
-.switch input:checked + .knob::after { transform: translateX(16px); }
-.help { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--muted); }
-
-.ghost { position: fixed; left: 0; top: 0; pointer-events: none; z-index: 20; filter: drop-shadow(0 10px 6px rgba(0,0,0,.25)); }
-.ghost svg, .flyer svg { width: 100%; height: 100%; display: block; overflow: visible; }
-.flyer { position: fixed; pointer-events: none; z-index: 15; transition: transform .28s cubic-bezier(.4,.1,.3,1); }
-
-.pop svg { animation: pop .5s ease-in forwards; }
-.vanish svg { animation: vanish .3s ease-in forwards; }
-.drop svg { animation: drop .22s ease-out; }
-.bump svg { animation: bump .18s ease-out; }
-
-.float {
-  position: fixed; z-index: 25; pointer-events: none; transform: translate(-50%, -50%);
-  font-family: var(--display); font-size: 22px; color: var(--accent);
-  text-shadow: 0 2px 0 var(--card), 0 0 6px var(--card); white-space: nowrap;
-  animation: floatup .9s ease-out forwards;
-}
-.float small { display: block; font-size: 14px; color: var(--ink); text-align: center; }
-.spark { position: fixed; z-index: 24; width: 8px; height: 8px; border-radius: 50%; pointer-events: none; animation: spark .6s ease-out forwards; }
-
-.toast {
-  position: fixed; left: 50%; top: calc(14px + env(safe-area-inset-top, 0px)); transform: translateX(-50%);
-  background: var(--ink); color: var(--card); padding: 8px 16px; border-radius: 999px;
-  font-family: var(--display); font-size: 15px; z-index: 30; white-space: nowrap; animation: toast 2.2s ease forwards;
+  height: 12px; border-radius: 6px;
+  background: linear-gradient(var(--shelf), var(--shelf-dark));
+  box-shadow: 0 6px 12px rgba(51, 40, 63, .15);
 }
 
-.over { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; background: rgba(61,44,42,.45); padding: 16px; }
-.over .box { background: var(--card); border-radius: 22px; padding: 24px 22px; text-align: center; width: min(320px, 100%); box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; }
-.over h2 { font-family: var(--display); font-weight: 400; font-size: 26px; margin: 0; }
-.over p { margin: 0; color: var(--muted); }
-.over .big { font-family: var(--display); font-size: 42px; color: var(--accent); font-variant-numeric: tabular-nums; }
-
-@keyframes pop { 0% { transform: scale(1) rotate(0); } 40% { transform: scale(1.18) rotate(-8deg); } 100% { transform: scale(0) rotate(40deg); opacity: 0; } }
-@keyframes vanish { to { transform: scale(.3); opacity: 0; } }
-@keyframes drop { from { transform: scale(1.25); opacity: .6; } to { transform: scale(1); opacity: 1; } }
-@keyframes bump { 50% { transform: scale(1.08); } }
-@keyframes wiggle { from { transform: rotate(-4deg); } to { transform: rotate(4deg); } }
-@keyframes slidein { from { transform: translateX(60px) scale(.6); opacity: 0; } }
-@keyframes floatup { 0% { opacity: 0; margin-top: 10px; } 15% { opacity: 1; } 100% { opacity: 0; margin-top: -50px; } }
-@keyframes spark { to { transform: translate(var(--dx), var(--dy)) scale(.2); opacity: 0; } }
-@keyframes toast { 0% { opacity: 0; margin-top: -8px; } 10%, 85% { opacity: 1; margin-top: 0; } 100% { opacity: 0; } }
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+.game {
+  display: grid; grid-template-columns: 96px 1fr; gap: 16px; align-items: center;
+  background: var(--card); border-radius: 22px; padding: 16px;
+  text-decoration: none; color: inherit;
+  box-shadow: 0 2px 0 var(--line), 0 10px 22px rgba(51, 40, 63, .08);
+  transition: transform .15s ease, box-shadow .15s ease;
 }
+.game:hover { transform: translateY(-3px); box-shadow: 0 2px 0 var(--line), 0 16px 28px rgba(51, 40, 63, .12); }
+.game:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.art { width: 96px; height: 96px; border-radius: 20px; display: grid; place-items: center; background: #e9f4ee; }
+.art svg { width: 84px; height: 84px; display: block; }
+.info { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.info h2 { font-family: var(--display); font-weight: 400; font-size: 23px; margin: 0; }
+.info p { margin: 0; font-size: 13.5px; line-height: 1.5; color: var(--muted); }
+.meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 2px; }
+.pill { font-size: 12px; padding: 3px 10px; border-radius: 999px; background: var(--ground); color: var(--ink); font-variant-numeric: tabular-nums; }
+.pill.go { background: var(--accent); color: var(--card); font-family: var(--display); font-size: 14px; padding: 4px 14px; }
+
+.slot-empty {
+  display: grid; grid-template-columns: 96px 1fr; gap: 16px; align-items: center;
+  border: 2px dashed var(--line); border-radius: 22px; padding: 14px; color: var(--muted);
+}
+.slot-empty .art { background: transparent; border: 2px dashed var(--line); font-family: var(--display); font-size: 30px; color: var(--line); box-sizing: border-box; }
+.slot-empty h2 { font-family: var(--display); font-weight: 400; font-size: 19px; margin: 0; color: var(--muted); }
+
+@media (max-width: 380px) {
+  .game, .slot-empty { grid-template-columns: 72px 1fr; gap: 12px; }
+  .art { width: 72px; height: 72px; }
+  .art svg { width: 64px; height: 64px; }
+}
+@media (prefers-reduced-motion: reduce) { .game { transition: none; } .game:hover { transform: none; } }
 </style>
 </head>
 <body>
 <div class="app">
-  <header class="top">
-    <h1>케이크 <span>합치기</span></h1>
-    <button class="btn" id="newBtn" type="button">새 게임</button>
+  <header>
+    <h1>놀이 <span>상자</span></h1>
+    <p class="sub">하고 싶은 게임을 골라 보세요.</p>
   </header>
 
-  <div class="stats">
-    <div class="stat"><span class="lab">점수</span><b id="score">0</b></div>
-    <div class="stat"><span class="lab">최고</span><b id="best">0</b></div>
-    <div class="stat"><span class="lab">완성 케이크</span><b id="clears">0</b></div>
-  </div>
-
-  <div class="case" id="case" aria-label="등장하는 케이크"></div>
-
-  <div class="wrap" id="wrap">
-    <div class="board" id="board" role="grid" aria-label="테이블"></div>
-  </div>
-
-  <div class="tray" id="tray" aria-label="새 접시"></div>
-
-  <div class="tools">
-    <button class="btn" id="shuffleBtn" type="button">접시 바꾸기 · <span id="shufN">3</span></button>
-    <span class="grow" id="grow"></span>
-  </div>
-  <p class="help">쟁반의 접시를 테이블 빈칸으로 끌어다 놓거나, 눌러서 고른 뒤 빈칸을 누르세요. 위·아래·옆으로 붙은 접시끼리 같은 케이크 조각이 한쪽으로 모이고, 한 접시가 같은 케이크 6조각으로 채워지면 완성되어 사라져요. 케이크를 8판 완성할 때마다 테이블이 한 줄씩 끝없이 늘어나요. 판이 꽉 차면 끝!</p>
-</div>
-
-<div class="over" id="over" hidden>
-  <div class="box">
-    <h2>테이블이 꽉 찼어요</h2>
-    <p>이번 점수</p>
-    <div class="big" id="overScore">0</div>
-    <p id="overNote"></p>
-    <button class="btn warn" id="againBtn" type="button">다시 하기</button>
-  </div>
+  <section class="shelf" aria-label="게임 목록">
+    <span class="shelf-label">게임 선반</span>
+    <div id="games" class="shelf"></div>
+    <div class="board" aria-hidden="true"></div>
+  </section>
 </div>
 
 <script>
 (() => {
-  const COLS = 4, START_ROWS = 5, GROW_EVERY = 8, MAX = 6;
-  const SAVE_KEY = 'cake-merge-v2', BEST_KEY = 'cake-merge-best';
-  const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const T_FLY = RM ? 10 : 280, T_GAP = RM ? 0 : 70;
+  const store = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 
-  const CAKES = [
-    { name: '딸기',     top: '#f6a3bf', side: '#d4587f', dot: '#e3263f' },
-    { name: '초코',     top: '#8b5a43', side: '#573224', dot: '#f3e2d2' },
-    { name: '말차',     top: '#a9d07b', side: '#6c9841', dot: '#fbf5e2' },
-    { name: '레몬',     top: '#ffe07c', side: '#dba72a', dot: '#8fbf3a' },
-    { name: '블루베리', top: '#a698e2', side: '#6858b4', dot: '#33287a' },
-    { name: '오렌지',   top: '#ffb56d', side: '#de7820', dot: '#fff2df' },
-    { name: '민트초코', top: '#90e0d2', side: '#36a291', dot: '#4a2f22' },
-    { name: '레드벨벳', top: '#d6485b', side: '#981d31', dot: '#fffaf6' },
+  // Add new games here: one entry per game folder under games/.
+  const GAMES = [
+    {
+      name: '케이크 합치기',
+      desc: '같은 케이크 조각을 옆 접시로 모아 6조각을 채우는 퍼즐. 완성할수록 테이블이 넓어져요.',
+      href: 'games/cake/index.html',
+      art: cakeArt(),
+      best: () => +store('cake-merge-best') || 0,
+      resume: () => { try { const s = JSON.parse(store('cake-merge-v2')); return !!(s && !s.over && s.board.some(Boolean)); } catch (e) { return false; } },
+    },
   ];
+  const EMPTY_SLOTS = 1;
 
-  const $ = (s) => document.querySelector(s);
-  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-  const rand = (n) => Math.floor(Math.random() * n);
-  const weighted = (arr, w) => {
-    const ws = arr.map(w), tot = ws.reduce((a, b) => a + b, 0);
-    let x = Math.random() * tot;
-    for (let i = 0; i < arr.length; i++) { x -= ws[i]; if (x <= 0 && ws[i] > 0) return arr[i]; }
-    return arr[ws.findIndex((v) => v > 0)] ?? arr[0];
-  };
-  const store = {
-    get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
-    set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
-  };
-
-  // ---------- plates: { s: [{ t, n }, ...] } — up to 6 slices, up to 3 cake kinds ----------
-  const total = (p) => p.s.reduce((a, g) => a + g.n, 0);
-  const cnt = (p, t) => { const g = p.s.find((g) => g.t === t); return g ? g.n : 0; };
-  const addS = (p, t, k) => { const g = p.s.find((g) => g.t === t); if (g) g.n += k; else p.s.push({ t, n: k }); };
-  const takeS = (p, t, k) => { const g = p.s.find((g) => g.t === t); g.n -= k; if (g.n <= 0) p.s = p.s.filter((x) => x !== g); };
-  const slicesOf = (p) => p.s.flatMap((g) => Array(g.n).fill(g.t));
-  const isDone = (p) => p.s.length === 1 && p.s[0].n === MAX;
-  const clone = (p) => ({ s: p.s.map((g) => ({ ...g })) });
-  const describe = (p) => p.s.map((g) => `${CAKES[g.t].name} ${g.n}`).join(', ');
-
-  let S = null, busy = false, sel = -1, drag = null, cells = [];
-  const slots = [];
-  const N = () => S.rows * COLS;
-
-  // ---------- drawing ----------
-  const pt = (deg, r) => { const a = deg * Math.PI / 180; return [(Math.cos(a) * r).toFixed(2), (Math.sin(a) * r).toFixed(2)]; };
-  function wedge(i, c) {
-    const a0 = -90 + i * 60 + 2.5, a1 = -90 + (i + 1) * 60 - 2.5, mid = (a0 + a1) / 2, R = 37;
-    const [ox, oy] = pt(mid, 1.6);
-    const [x0, y0] = pt(a0, R), [x1, y1] = pt(a1, R);
-    const [c0x, c0y] = pt(a0 + 4, R - 5), [c1x, c1y] = pt(a1 - 4, R - 5);
-    const [tx, ty] = pt(mid, 24);
-    return `<g transform="translate(${ox} ${oy})">` +
-      `<path d="M0 0L${x0} ${y0}A${R} ${R} 0 0 1 ${x1} ${y1}Z" fill="${c.top}" stroke="${c.side}" stroke-width="2.6" stroke-linejoin="round"/>` +
-      `<path d="M${c0x} ${c0y}A${R - 5} ${R - 5} 0 0 1 ${c1x} ${c1y}" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="2.4" stroke-linecap="round"/>` +
-      `<circle cx="${tx}" cy="${ty}" r="5" fill="${c.dot}" stroke="${c.side}" stroke-opacity=".35"/>` +
-      `<circle cx="${(+tx - 1.6).toFixed(2)}" cy="${(+ty - 1.6).toFixed(2)}" r="1.5" fill="#fff" opacity=".75"/></g>`;
-  }
-  function plateSVG(p) {
-    let s = '<svg viewBox="-50 -50 100 100" aria-hidden="true">' +
-      '<circle r="46" fill="#ffffff" stroke="#e7dcd6" stroke-width="2"/>' +
-      '<circle r="40" fill="#f8f2ee"/>';
-    if (p) slicesOf(p).forEach((t, i) => { s += wedge(i, CAKES[t]); });
+  function cakeArt() {
+    const cakes = [['#f6a3bf', '#d4587f'], ['#f6a3bf', '#d4587f'], ['#f6a3bf', '#d4587f'], ['#ffe07c', '#dba72a'], ['#ffe07c', '#dba72a'], ['#a9d07b', '#6c9841']];
+    const pt = (d, r) => { const a = d * Math.PI / 180; return [(Math.cos(a) * r).toFixed(2), (Math.sin(a) * r).toFixed(2)]; };
+    let s = '<svg viewBox="-50 -50 100 100" aria-hidden="true"><circle r="46" fill="#fff" stroke="#e7dcd6" stroke-width="2"/><circle r="40" fill="#f8f2ee"/>';
+    cakes.forEach(([top, side], i) => {
+      const a0 = -90 + i * 60 + 2.5, a1 = -90 + (i + 1) * 60 - 2.5, [x0, y0] = pt(a0, 37), [x1, y1] = pt(a1, 37), [tx, ty] = pt((a0 + a1) / 2, 24);
+      s += `<path d="M0 0L${x0} ${y0}A37 37 0 0 1 ${x1} ${y1}Z" fill="${top}" stroke="${side}" stroke-width="2.6" stroke-linejoin="round"/><circle cx="${tx}" cy="${ty}" r="4.5" fill="${side}"/>`;
+    });
     return s + '</svg>';
   }
 
-  // ---------- state ----------
-  function fresh() {
-    return { rows: START_ROWS, board: Array(START_ROWS * COLS).fill(null), tray: [null, null, null], score: 0, clears: 0, combo: 0, shuffles: 3, over: false };
-  }
-  const bestScore = () => Math.max(+store.get(BEST_KEY) || 0, S ? S.score : 0);
-  const typeCount = () => Math.min(CAKES.length, 4 + Math.floor(S.clears / 6));
-  const level = () => 1 + Math.floor(S.clears / 6);
-  const save = () => {
-    store.set(SAVE_KEY, JSON.stringify(S));
-    if (S.score > (+store.get(BEST_KEY) || 0)) store.set(BEST_KEY, String(S.score));
-  };
-  function valid(d) {
-    const okPlate = (p) => p === null || (p && Array.isArray(p.s) && p.s.every((g) => g.t >= 0 && g.t < CAKES.length && g.n > 0) && total(p) <= MAX);
-    return d && d.rows >= START_ROWS && Array.isArray(d.board) && d.board.length === d.rows * COLS &&
-      Array.isArray(d.tray) && d.tray.length === 3 && d.board.concat(d.tray).every(okPlate);
-  }
-
-  const nbrs = (i) => {
-    const r = Math.floor(i / COLS), c = i % COLS, out = [];
-    if (r > 0) out.push(i - COLS);
-    if (r < S.rows - 1) out.push(i + COLS);
-    if (c > 0) out.push(i - 1);
-    if (c < COLS - 1) out.push(i + 1);
-    return out;
-  };
-
-  // ---------- plate generator: reads the table so the puzzle stays solvable ----------
-  function genPlates(count) {
-    const B = S.board, n = N();
-    const emptyCells = [...Array(n).keys()].filter((i) => !B[i]);
-    const pressure = 1 - emptyCells.length / n;   // 0 = empty table, 1 = full
-    const T = typeCount(), lvl = level();
-    const maxKinds = lvl < 3 ? 2 : 3;
-    const present = new Set();
-    B.forEach((p) => p && p.s.forEach((g) => present.add(g.t)));
-    const crowded = pressure > 0.55;
-    const pickType = (not = []) => weighted([...Array(T).keys()], (t) => not.includes(t) ? 0 : present.has(t) ? 3 : (crowded ? 0.2 : 1));
-
-    // every empty cell next to plates is a "spot": placing the right cakes there makes a merge
-    const spots = emptyCells.map((e) => {
-      const want = new Map();
-      nbrs(e).forEach((j) => B[j] && B[j].s.forEach((g) => want.set(g.t, Math.max(want.get(g.t) || 0, g.n))));
-      return { e, want };
-    }).filter((s) => s.want.size);
-
-    const used = new Set(), out = [];
-    let helped = 0;
-    for (let k = 0; k < count; k++) {
-      const live = spots.filter((s) => !used.has(s.e));
-      const pHelp = Math.min(0.92, Math.max(0.3, 0.55 - 0.025 * (lvl - 1)) + pressure * 0.45);
-      const mustHelp = k === count - 1 && helped === 0 && emptyCells.length <= 7;
-      const p = { s: [] };
-      if (live.length && (mustHelp || Math.random() < pHelp)) {
-        // favour spots surrounded by nearly finished stacks
-        const s = weighted(live, (s) => 1 + [...s.want.values()].reduce((a, b) => a + b * b, 0));
-        used.add(s.e);
-        const kinds = [...s.want.entries()].sort((a, b) => b[1] - a[1]);
-        const take = kinds.length > 1 && maxKinds > 1 && Math.random() < 0.4 ? 2 : 1;
-        for (const [t, c] of kinds.slice(0, take)) {
-          const need = Math.max(1, MAX - c);
-          addS(p, t, Math.random() < 0.55 ? Math.min(need, take === 1 ? 4 : 3) : 1 + rand(Math.min(need, 2)));
-        }
-        if (p.s.length < maxKinds && total(p) < 5 && Math.random() < 0.2 + 0.04 * lvl) {
-          addS(p, pickType(p.s.map((g) => g.t)), 1);
-        }
-        helped++;
-      } else {
-        const kinds = weighted([1, 2, 3], (k) => k > maxKinds ? 0 : [0, 0.45, 0.4, 0.12 + 0.03 * lvl][k]);
-        const chosen = [];
-        for (let i = 0; i < kinds; i++) chosen.push(pickType(chosen));
-        chosen.forEach((t) => addS(p, t, kinds === 1 ? 1 + rand(3) : 1 + rand(2)));
-      }
-      out.push(p);
-    }
-    for (let i = out.length - 1; i > 0; i--) { const j = rand(i + 1); [out[i], out[j]] = [out[j], out[i]]; }
-    return out;
-  }
-  function refillTray() { S.tray = genPlates(3); }
-
-  // ---------- rendering ----------
-  function buildBoard() {
-    const board = $('#board');
-    board.textContent = '';
-    cells = [];
-    for (let i = 0; i < N(); i++) {
-      const el = document.createElement('div');
-      el.className = 'cell empty';
-      el.dataset.i = i;
-      el.setAttribute('role', 'gridcell');
-      el.addEventListener('click', () => onCellTap(i));
-      el.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse' && sel >= 0 && !drag) setHint(i, S.tray[sel]); });
-      el.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse' && sel >= 0 && !drag) setHint(-1); });
-      board.appendChild(el);
-      cells.push(el);
-    }
-  }
-  function buildTray() {
-    const tray = $('#tray');
-    for (let i = 0; i < 3; i++) {
-      const el = document.createElement('button');
-      el.type = 'button';
-      el.className = 'slot';
-      el.dataset.i = i;
-      bindSlot(el, i);
-      tray.appendChild(el);
-      slots.push(el);
-    }
-  }
-  function fitWrap() {
-    const wrap = $('#wrap');
-    if (S.rows <= START_ROWS || !cells.length) { wrap.style.maxHeight = ''; return; }
-    const ch = cells[0].getBoundingClientRect().height;
-    wrap.style.maxHeight = Math.round((ch + 4) * (START_ROWS + 0.45) + 26) + 'px';
-  }
-  function renderCell(i, anim) {
-    const p = S.board[i], el = cells[i];
-    el.classList.remove('glow', 'hint', 'pop', 'vanish', 'drop', 'bump');
-    el.classList.toggle('empty', !p);
-    el.classList.toggle('can', !p && sel >= 0);
-    el.innerHTML = p ? plateSVG(p) : '';
-    el.setAttribute('aria-label', p ? describe(p) : '빈칸');
-    if (anim) { void el.offsetWidth; el.classList.add(anim); }
-  }
-  function renderBoard() { for (let i = 0; i < N(); i++) renderCell(i); }
-  function renderTray(anim) {
-    slots.forEach((el, i) => {
-      const p = S.tray[i];
-      el.classList.remove('in', 'lifting');
-      el.classList.toggle('sel', sel === i);
-      el.innerHTML = p ? plateSVG(p) : '';
-      el.disabled = !p;
-      el.setAttribute('aria-label', p ? `접시: ${describe(p)}` : '빈 자리');
-      if (anim && p) { void el.offsetWidth; el.classList.add('in'); }
-    });
-  }
-  function renderStats() {
-    $('#score').textContent = S.score.toLocaleString();
-    $('#best').textContent = bestScore().toLocaleString();
-    $('#clears').textContent = S.clears;
-    $('#shufN').textContent = S.shuffles;
-    $('#shuffleBtn').disabled = S.shuffles <= 0 || S.over;
-    const left = GROW_EVERY - (S.clears % GROW_EVERY);
-    $('#grow').textContent = `테이블 ${S.rows}줄 · 다음 줄까지 ${left}판`;
-    const T = typeCount();
-    $('#case').innerHTML = '<span>진열대</span>' + CAKES.map((c, i) => i < T
-      ? `<span class="chip"><span class="dot" style="background:${c.top}"></span>${c.name}</span>`
-      : `<span class="chip locked"><span class="dot"></span>?</span>`).join('');
-  }
-  function renderAll() { renderBoard(); renderTray(); renderStats(); fitWrap(); $('#over').hidden = !S.over; if (S.over) fillOver(); }
-
-  function setHint(i, plate) {
-    cells.forEach((c) => c.classList.remove('hint', 'glow'));
-    if (i < 0 || !plate || S.board[i]) return;
-    cells[i].classList.add('hint');
-    nbrs(i).forEach((j) => { if (S.board[j] && plate.s.some((g) => cnt(S.board[j], g.t))) cells[j].classList.add('glow'); });
-  }
-
-  const centerOf = (el) => { const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width }; };
-  function floatText(i, html) {
-    const c = centerOf(cells[i]);
-    const el = document.createElement('div');
-    el.className = 'float'; el.innerHTML = html;
-    el.style.left = c.x + 'px'; el.style.top = c.y + 'px';
-    document.body.appendChild(el);
-    setTimeout(() => el.remove(), 950);
-  }
-  function sparks(i, color) {
-    if (RM) return;
-    const c = centerOf(cells[i]);
-    for (let k = 0; k < 10; k++) {
-      const el = document.createElement('div'), a = (k / 10) * Math.PI * 2, d = c.w * (0.5 + Math.random() * 0.4);
-      el.className = 'spark';
-      el.style.background = k % 2 ? color : '#ffd23f';
-      el.style.left = c.x - 4 + 'px'; el.style.top = c.y - 4 + 'px';
-      el.style.setProperty('--dx', Math.cos(a) * d + 'px'); el.style.setProperty('--dy', Math.sin(a) * d + 'px');
-      document.body.appendChild(el);
-      setTimeout(() => el.remove(), 650);
-    }
-  }
-  function toast(msg) {
-    const el = document.createElement('div');
-    el.className = 'toast'; el.textContent = msg;
-    document.body.appendChild(el);
-    setTimeout(() => el.remove(), 2300);
-  }
-
-  // ---------- merging ----------
-  async function flySlice(from, to, t, ti) {
-    const src = S.board[from];
-    const si = slicesOf(src).lastIndexOf(t);
-    takeS(src, t, 1);
-    renderCell(from);
-    const a = cells[from].getBoundingClientRect(), b = cells[to].getBoundingClientRect();
-    const el = document.createElement('div');
-    el.className = 'flyer';
-    Object.assign(el.style, { left: a.left + 'px', top: a.top + 'px', width: a.width + 'px', height: a.height + 'px' });
-    el.innerHTML = `<svg viewBox="-50 -50 100 100">${wedge(si, CAKES[t])}</svg>`;
-    document.body.appendChild(el);
-    void el.offsetWidth;
-    el.style.transform = `translate(${b.left - a.left}px, ${b.top - a.top}px) rotate(${(ti - si) * 60}deg)`;
-    await sleep(T_FLY);
-    el.remove();
-    addS(S.board[to], t, 1);
-    renderCell(to, 'bump');
-  }
-
-  // Finished plates (6 of one cake) pop, emptied plates leave the table.
-  async function sweep() {
-    const done = [], gone = [];
-    S.board.forEach((p, i) => { if (p && isDone(p)) done.push(i); else if (p && !total(p)) gone.push(i); });
-    if (!done.length && !gone.length) return [];
-    gone.forEach((i) => cells[i].classList.add('vanish'));
-    done.forEach((i) => { cells[i].classList.add('pop'); sparks(i, CAKES[S.board[i].s[0].t].top); });
-    await sleep(RM ? 0 : 480);
-    done.concat(gone).forEach((i) => { S.board[i] = null; renderCell(i); });
-    return done;
-  }
-
-  // Slices of one cake flow between touching plates toward the plate that already holds
-  // the most of that cake (and has room). Every plate that changes is checked again,
-  // so merges can chain across the table.
-  async function resolve(start) {
-    const B = S.board, queue = [start], finished = [], sent = new Set();
-    let guard = 0;
-    while (queue.length && guard++ < 80) {
-      const c = queue.shift();
-      if (!B[c]) continue;
-      for (const t of B[c].s.map((g) => g.t)) {
-        if (!B[c] || !cnt(B[c], t)) continue;
-        const group = [c, ...nbrs(c).filter((j) => B[j] && cnt(B[j], t))];
-        if (group.length < 2) continue;
-        const recv = group.filter((i) => total(B[i]) < MAX && !sent.has(`${i}:${t}`));
-        if (!recv.length) continue;
-        const others = (i) => total(B[i]) - cnt(B[i], t);
-        recv.sort((a, b) => cnt(B[b], t) - cnt(B[a], t) || others(a) - others(b) || (a === c ? -1 : b === c ? 1 : 0));
-        const tg = recv[0];
-        let room = MAX - total(B[tg]);
-        const donors = [];
-        for (const d of group) {
-          if (d === tg || room <= 0) continue;
-          // slices only flow toward a plate holding at least as many of that cake;
-          // a full plate may give its slices away, but then never takes that cake back this turn
-          const uphill = cnt(B[d], t) <= cnt(B[tg], t);
-          if (!uphill && (total(B[d]) < MAX || sent.has(`${d}:${t}`))) continue;
-          if (!uphill) sent.add(`${d}:${t}`);
-          const k = Math.min(cnt(B[d], t), room);
-          for (let x = 0; x < k; x++) donors.push(d);
-          room -= k;
-        }
-        if (!donors.length) continue;
-        const proj = clone(B[tg]);
-        await Promise.all(donors.map((d, k) => {
-          addS(proj, t, 1);
-          const ti = slicesOf(proj).lastIndexOf(t);
-          return sleep(k * T_GAP).then(() => flySlice(d, tg, t, ti));
-        }));
-        queue.push(tg, ...new Set(donors));
-        await sleep(RM ? 0 : 60);
-      }
-      finished.push(...await sweep());
-    }
-    return finished;
-  }
-
-  function growTable() {
-    const target = START_ROWS + Math.floor(S.clears / GROW_EVERY);
-    if (target <= S.rows) return false;
-    const added = (target - S.rows) * COLS;
-    S.rows = target;
-    S.board = S.board.concat(Array(added).fill(null));
-    buildBoard();
-    renderBoard();
-    fitWrap();
-    for (let i = N() - added; i < N(); i++) { cells[i].classList.add('drop'); }
-    const wrap = $('#wrap');
-    wrap.scrollTo({ top: wrap.scrollHeight, behavior: RM ? 'auto' : 'smooth' });
-    toast('테이블이 한 줄 늘어났어요!');
-    return true;
-  }
-
-  async function place(idx, cell) {
-    if (busy || S.over || S.board[cell] || !S.tray[idx]) return;
-    busy = true; sel = -1;
-    setHint(-1);
-    S.board[cell] = S.tray[idx];
-    S.tray[idx] = null;
-    renderTray();
-    renderBoard();
-    renderCell(cell, 'drop');
-    await sleep(RM ? 0 : 180);
-
-    const typesBefore = typeCount();
-    const filled = await resolve(cell);
-    if (filled.length) {
-      S.combo++;
-      const gain = filled.length * 60 * S.combo + (filled.length > 1 ? 40 * filled.length : 0);
-      S.score += gain;
-      const before = S.clears;
-      S.clears += filled.length;
-      if (Math.floor(S.clears / 10) > Math.floor(before / 10)) { S.shuffles++; setTimeout(() => toast('접시 바꾸기 +1'), 900); }
-      floatText(filled[0], `+${gain}${S.combo > 1 ? `<small>콤보 ×${S.combo}</small>` : ''}`);
-      if (typeCount() > typesBefore) toast(`새 케이크 등장: ${CAKES[typeCount() - 1].name}`);
-      growTable();
-    } else {
-      S.combo = 0;
-    }
-    if (S.tray.every((p) => !p)) { refillTray(); renderTray(true); }
-    if (!S.board.some((p) => !p)) { S.over = true; save(); fillOver(); $('#over').hidden = false; }
-    renderStats();
-    renderBoard();
-    save();
-    busy = false;
-  }
-
-  function fillOver() {
-    $('#overScore').textContent = S.score.toLocaleString();
-    $('#overNote').textContent = `완성한 케이크 ${S.clears}판 · 테이블 ${S.rows}줄 · 최고 ${bestScore().toLocaleString()}점`;
-  }
-
-  // ---------- input ----------
-  function onCellTap(i) {
-    if (drag || busy) return;
-    if (sel >= 0 && !S.board[i]) place(sel, i);
-  }
-  function select(i) {
-    sel = (sel === i || !S.tray[i]) ? -1 : i;
-    renderTray();
-    cells.forEach((c, k) => c.classList.toggle('can', !S.board[k] && sel >= 0));
-    setHint(-1);
-  }
-  function cellAt(x, y) {
-    const el = document.elementFromPoint(x, y);
-    const c = el && el.closest('.cell');
-    return c ? +c.dataset.i : -1;
-  }
-  function autoScroll(y) {
-    const wrap = $('#wrap'), r = wrap.getBoundingClientRect();
-    if (wrap.scrollHeight <= wrap.clientHeight) return;
-    if (y < r.top + 40 && y > r.top - 60) wrap.scrollTop -= 10;
-    else if (y > r.bottom - 40 && y < r.bottom + 80) wrap.scrollTop += 10;
-  }
-  function bindSlot(el, i) {
-    el.addEventListener('pointerdown', (e) => {
-      if (busy || S.over || !S.tray[i] || e.button > 0) return;
-      e.preventDefault();
-      el.setPointerCapture(e.pointerId);
-      drag = { i, x0: e.clientX, y0: e.clientY, moved: false, ghost: null, lift: e.pointerType === 'mouse' ? 0 : 48, target: -1 };
-    });
-    el.addEventListener('pointermove', (e) => {
-      if (!drag || drag.i !== i) return;
-      if (!drag.moved && Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) > 8) {
-        drag.moved = true;
-        sel = -1; renderTray();
-        el.classList.add('lifting');
-        const g = document.createElement('div'), w = cells[0].getBoundingClientRect().width;
-        g.className = 'ghost';
-        g.style.width = g.style.height = w + 'px';
-        g.innerHTML = plateSVG(S.tray[i]);
-        document.body.appendChild(g);
-        drag.ghost = g; drag.w = w;
-      }
-      if (drag.moved) {
-        const x = e.clientX, y = e.clientY - drag.lift;
-        drag.ghost.style.transform = `translate(${x - drag.w / 2}px, ${y - drag.w / 2}px) scale(1.08)`;
-        autoScroll(y);
-        const t = cellAt(x, y);
-        if (t !== drag.target) { drag.target = t; setHint(t, S.tray[i]); }
-      }
-    });
-    const end = (e, cancel) => {
-      if (!drag || drag.i !== i) return;
-      const d = drag;
-      drag = null;
-      if (d.ghost) d.ghost.remove();
-      el.classList.remove('lifting');
-      setHint(-1);
-      if (!d.moved) { if (!cancel) select(i); return; }
-      const t = cellAt(e.clientX, e.clientY - d.lift);
-      if (!cancel && t >= 0 && !S.board[t]) place(i, t);
-      else renderTray();
-    };
-    el.addEventListener('pointerup', (e) => end(e, false));
-    el.addEventListener('pointercancel', (e) => end(e, true));
-    el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(i); } });
-  }
-
-  let confirmTimer = 0;
-  function newGame() {
-    S = fresh();
-    sel = -1;
-    refillTray();
-    $('#over').hidden = true;
-    $('#wrap').scrollTop = 0;
-    buildBoard();
-    renderAll();
-    renderTray(true);
-    save();
-  }
-  $('#newBtn').addEventListener('click', () => {
-    const b = $('#newBtn');
-    if (S.over || !S.board.some(Boolean) || b.classList.contains('warn')) {
-      clearTimeout(confirmTimer); b.classList.remove('warn'); b.textContent = '새 게임';
-      if (!busy) newGame();
-      return;
-    }
-    b.classList.add('warn'); b.textContent = '정말 새로 시작?';
-    confirmTimer = setTimeout(() => { b.classList.remove('warn'); b.textContent = '새 게임'; }, 3000);
-  });
-  $('#againBtn').addEventListener('click', () => { if (!busy) newGame(); });
-  $('#shuffleBtn').addEventListener('click', () => {
-    if (busy || S.over || S.shuffles <= 0) return;
-    const idx = [0, 1, 2].filter((i) => S.tray[i]);
-    if (!idx.length) return;
-    const fresh3 = genPlates(idx.length);
-    idx.forEach((i, k) => { S.tray[i] = fresh3[k]; });
-    S.shuffles--; sel = -1;
-    renderTray(true); renderStats(); save();
-  });
-  addEventListener('resize', () => S && fitWrap());
-
-  // ---------- boot ----------
-  function start(data) {
-    let d = data && valid(data) ? data : null;
-    if (!d) { try { const raw = store.get(SAVE_KEY); const p = raw && JSON.parse(raw); if (valid(p)) d = p; } catch (e) {} }
-    S = d ? Object.assign(fresh(), d) : fresh();
-    if (S.tray.every((p) => !p) && !S.over) refillTray();
-    if (!slots.length) buildTray();
-    buildBoard();
-    renderAll();
-    renderTray(true);
-    save();
-  }
-  window.claude?.hot?.snapshot?.(() => S);
-  window.claude?.hot?.ready ? window.claude.hot.ready(start) : start(window.claude?.hot?.data ?? {});
+  const list = document.getElementById('games');
+  list.innerHTML = GAMES.map((g) => {
+    const best = g.best();
+    return `<a class="game" href="${g.href}">
+      <div class="art">${g.art}</div>
+      <div class="info">
+        <h2>${g.name}</h2>
+        <p>${g.desc}</p>
+        <div class="meta">
+          <span class="pill go">${g.resume() ? '이어 하기' : '시작'}</span>
+          ${best ? `<span class="pill">최고 ${best.toLocaleString()}점</span>` : ''}
+        </div>
+      </div>
+    </a>`;
+  }).join('') + Array.from({ length: EMPTY_SLOTS }, () => `
+    <div class="slot-empty" aria-label="빈 자리">
+      <div class="art">+</div>
+      <div class="info"><h2>다음 게임 자리</h2><p>새 게임을 만들면 여기에 놓여요.</p></div>
+    </div>`).join('');
 })();
 </script>
 </body>
