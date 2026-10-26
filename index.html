@@ -100,6 +100,7 @@ h1 span { color: var(--accent); }
 
 <script>
 (() => {
+  const LOCAL = location.protocol === 'file:' || /(^|\.)github\.io$/.test(location.hostname) || ['localhost', '127.0.0.1'].includes(location.hostname);
   const store = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 
   // Add new games here: one entry per game folder under games/.
@@ -129,6 +130,18 @@ h1 span { color: var(--accent); }
       tint: '#cbdde2',
       best: () => +store('2048-best') || 0,
       resume: () => { try { const s = JSON.parse(store('2048-v1')); return !!(s && !s.over && s.score > 0); } catch (e) { return false; } },
+    },
+    {
+      name: '체스',
+      desc: '컴퓨터와 쉬움·보통·어려움으로 두거나, 지금 접속한 다른 사람과 자동으로 짝지어 온라인 대전을 해요.',
+      // the online version lives in its own artifact so it can match players
+      href: LOCAL ? 'games/chess/index.html' : 'https://claude.ai/artifact/HegJ3zwfak2uAuaFM3FUMg',
+      external: !LOCAL,
+      art: '<svg viewBox="0 0 80 80" aria-hidden="true"><text x="40" y="60" text-anchor="middle" font-size="58" font-family="Noto Sans Symbols 2, Segoe UI Symbol, Apple Symbols, serif" fill="#1f2430">\u265E\uFE0E</text></svg>',
+      tint: '#dfe3ea',
+      tag: '컴퓨터 · 온라인',
+      best: () => 0,
+      resume: () => { try { const s = JSON.parse(store('chess-ai-v1')); return !!(s && s.moves && s.moves.length && !s.over); } catch (e) { return false; } },
     },
   ];
   const EMPTY_SLOTS = 1;
@@ -161,7 +174,7 @@ h1 span { color: var(--accent); }
   const list = document.getElementById('games');
   list.innerHTML = GAMES.map((g) => {
     const best = g.best();
-    return `<a class="game" href="${g.href}">
+    return `<a class="game" href="${g.href}"${g.external ? ' target="_blank" rel="noopener"' : ''}>
       <div class="art"${g.tint ? ` style="background:${g.tint}"` : ''}>${g.art}</div>
       <div class="info">
         <h2>${g.name}</h2>
@@ -169,6 +182,7 @@ h1 span { color: var(--accent); }
         <div class="meta">
           <span class="pill go">${g.resume() ? '이어 하기' : '시작'}</span>
           ${best ? `<span class="pill">최고 ${best.toLocaleString()}점</span>` : ''}
+          ${g.tag ? `<span class="pill">${g.tag}</span>` : ''}
         </div>
       </div>
     </a>`;
