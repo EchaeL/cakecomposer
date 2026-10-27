@@ -609,6 +609,17 @@ body {
     material: '기물이 부족해서', resign: '기권', agreed: '무승부 합의', abandon: '상대가 대국을 떠남',
   };
   const AI_KEY = 'chess-ai-v1', ONLINE_KEY = 'chess-online-v1';
+  // Outside claude.ai (GitHub Pages) online play runs on this Firebase project's Firestore.
+  const FIREBASE = {
+    apiKey: 'AIzaSyBZlGYfUaqBK74zE1OU7RAiGDrHQ_TKouY',
+    authDomain: 'matrix-and-barcode.firebaseapp.com',
+    projectId: 'matrix-and-barcode',
+    storageBucket: 'matrix-and-barcode.firebasestorage.app',
+    messagingSenderId: '999327395283',
+    appId: '1:999327395283:web:7becd752d137093b141326',
+  };
+  const FB_SDK = 'https://www.gstatic.com/firebasejs/10.12.2/';
+  const PING_MS = 20000, GONE_MS = 45000, WAIT_ALIVE_MS = 40000;
 
   const $ = (s) => document.querySelector(s);
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -944,7 +955,34 @@ body {
   const tabId = 't' + Math.random().toString(36).slice(2, 10);
   const newId = () => Array.from(crypto.getRandomValues(new Uint8Array(10)), (b) => 'abcdefghijklmnopqrstuvwxyz0123456789'[b % 36]).join('');
 
+  const loadScript = (src) => new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
+  // Firestore wrapped so the shared online code can address it with the same paths as claude.ai's db
+  function fsDb(fs) {
+    return { doc: (p) => { const [c, id] = p.split('/'); return c === 'games' ? fs.collection('chessGames').doc(id) : fs.collection('chessLobby').doc('main'); } };
+  }
+  async function initFirebase() {
+    ON.kind = 'firebase';
+    try {
+      for (const f of ['firebase-app-compat.js', 'firebase-auth-compat.js', 'firebase-firestore-compat.js']) await loadScript(FB_SDK + f);
+      const app = firebase.apps.length ? firebase.app() : firebase.initializeApp(FIREBASE);
+      const cred = await app.auth().signInAnonymously();
+      ON.fs = app.firestore();
+      ON.db = fsDb(ON.fs);
+      ON.myId = cred.user.uid;
+      ON.myPeer = tabId;
+      ON.fs.collection('chessLobby').doc('main').onSnapshot((s) => { ON.lobbyWaiting = s.exists ? s.data().waiting : null; renderOnlineMenu(); }, () => {});
+    } catch (e) {
+      ON.fbError = true;
+    }
+  }
   async function initOnline() {
+    if (!(window.claude && window.claude.use)) {
+      await initFirebase();
+      ON.ready = true;
+      renderOnlineMenu();
+      return checkRejoin();
+    }
+    ON.kind = 'claude';
     const use = (n) => (window.claude && window.claude.use ? window.claude.use(n).catch(() => null) : Promise.resolve(null));
     const [db, user, room] = await Promise.all([use('db'), use('user'), use('room')]);
     ON.db = db; ON.user = user; ON.room = room;
@@ -963,7 +1001,10 @@ body {
     if (!ON.myPeer) ON.myPeer = tabId;
     ON.ready = true;
     renderOnlineMenu();
-    // come back to a game in progress after a reload
+    return checkRejoin();
+  }
+  // come back to a game in progress after a reload
+  async function checkRejoin() {
     const saved = store.get(ONLINE_KEY);
     if (saved && onlineUsable()) {
       const snap = await ON.db.doc('games/' + saved.gameId).get().catch(() => null);
@@ -976,11 +1017,21 @@ body {
     if ($('#menu').hidden) return;
     const notice = $('#onlineNotice');
     if (!ON.ready) return;
-    const live = ON.room ? ON.peers.length : 0;
-    const waiting = ON.room ? ON.peers.filter((p) => !p.sameTab && p.presence && p.presence.seeking).length : 0;
-    $('#liveLine').hidden = !ON.room || !onlineUsable();
-    $('#liveText').textContent = `지금 ${live}명이 체스 페이지를 보고 있어요` + (waiting ? ` · ${waiting}명이 상대를 기다리는 중` : '');
-    if (!ON.db || !ON.myId) {
+    if (ON.kind === 'firebase') {
+      const w = ON.lobbyWaiting;
+      const someone = w && w.uid !== ON.myId && Date.now() - (w.at || 0) < WAIT_ALIVE_MS;
+      $('#liveLine').hidden = !onlineUsable() || !someone;
+      $('#liveText').textContent = '지금 1명이 상대를 기다리고 있어요';
+    } else {
+      const live = ON.room ? ON.peers.length : 0;
+      const waiting = ON.room ? ON.peers.filter((p) => !p.sameTab && p.presence && p.presence.seeking).length : 0;
+      $('#liveLine').hidden = !ON.room || !onlineUsable();
+      $('#liveText').textContent = `지금 ${live}명이 체스 페이지를 보고 있어요` + (waiting ? ` · ${waiting}명이 상대를 기다리는 중` : '');
+    }
+    if (ON.fbError) {
+      notice.hidden = false;
+      notice.textContent = '온라인 서버에 연결하지 못했어요. 인터넷 연결을 확인하고 새로고침해 주세요.';
+    } else if (!ON.db || !ON.myId) {
       notice.hidden = false;
       notice.textContent = LOCAL
         ? '온라인 대전은 claude.ai에 올린 체스 페이지에서만 할 수 있어요. 여기서는 컴퓨터와 대전해 보세요.'
@@ -1016,6 +1067,7 @@ body {
     renderOnlineMenu();
     // wait briefly for our live-presence label so others can see we are really here
     for (let i = 0; i < 30 && ON.room && ON.myPeer === tabId; i++) await sleep(100);
+    if (ON.kind === 'firebase') return fbFindMatch();
     try {
       await withLobbyLease(matchStep);
     } catch (e) {
@@ -1086,7 +1138,83 @@ body {
     ON.seeking = false;
     if (clearPresence && ON.room) ON.room.presence({ seeking: null }).catch(() => {});
   }
+  // Firebase: one transaction either takes the seat in a live waiting game or opens a new one.
+  async function fbFindMatch() {
+    const fs = ON.fs, lobbyRef = fs.collection('chessLobby').doc('main');
+    let out = null;
+    try {
+      await fs.runTransaction(async (tx) => {
+        out = null;
+        const l = await tx.get(lobbyRef);
+        const w = l.exists ? l.data().waiting : null;
+        if (w && w.gameId && w.uid !== ON.myId && Date.now() - (w.at || 0) < WAIT_ALIVE_MS) {
+          const gref = fs.collection('chessGames').doc(w.gameId);
+          const g = await tx.get(gref);
+          if (g.exists && g.data().status === 'waiting') {
+            const seat = g.data().white ? 'black' : 'white';
+            tx.update(gref, { [seat]: ON.myId, status: 'playing', startedAt: Date.now() });
+            tx.set(lobbyRef, { waiting: null });
+            out = { join: w.gameId, color: seat === 'white' ? 1 : -1 };
+            return;
+          }
+        }
+        const gameId = newId(), seat = Math.random() < 0.5 ? 'white' : 'black';
+        tx.set(fs.collection('chessGames').doc(gameId), {
+          white: seat === 'white' ? ON.myId : null, black: seat === 'black' ? ON.myId : null,
+          status: 'waiting', moves: [], drawOffer: null, result: null, reason: null, createdAt: Date.now(), ping: {},
+        });
+        tx.set(lobbyRef, { waiting: { gameId, uid: ON.myId, at: Date.now() } });
+        out = { wait: gameId, color: seat === 'white' ? 1 : -1 };
+      });
+    } catch (e) {
+      ON.seeking = false; renderOnlineMenu();
+      return toast('지금은 매칭이 어려워요. 잠시 뒤 다시 눌러 주세요.');
+    }
+    if (!ON.seeking && out && out.wait) { fbCancel(out.wait); return; }
+    if (out.join) { ON.seeking = false; return enterOnline(out.join, out.color); }
+    const gameId = out.wait;
+    ON.waitingId = gameId; ON.waitingSeat = out.color;
+    $('#searchText').textContent = '상대를 기다리는 중… 다른 기기에서 "상대 찾기"를 누르면 바로 시작돼요';
+    ON.unsubWait = fs.collection('chessGames').doc(gameId).onSnapshot((s) => {
+      const d = s.exists ? s.data() : null;
+      if (d && d.status === 'playing' && ON.waitingId === gameId) { clearInterval(ON.waitBeat); stopWaiting(false); enterOnline(gameId, out.color); }
+    }, () => {});
+    // keep our lobby slot marked as alive; reclaim it if someone else's stale entry replaced it
+    clearInterval(ON.waitBeat);
+    ON.waitBeat = setInterval(() => {
+      if (!ON.seeking || ON.waitingId !== gameId) return clearInterval(ON.waitBeat);
+      fs.runTransaction(async (tx) => {
+        const l = await tx.get(lobbyRef);
+        const w = l.exists ? l.data().waiting : null;
+        if (!w || w.gameId === gameId || Date.now() - (w.at || 0) >= WAIT_ALIVE_MS) tx.set(lobbyRef, { waiting: { gameId, uid: ON.myId, at: Date.now() } });
+      }).catch(() => {});
+    }, 15000);
+  }
+  async function fbCancel(id) {
+    const fs = ON.fs, lobbyRef = fs.collection('chessLobby').doc('main'), gref = fs.collection('chessGames').doc(id);
+    clearInterval(ON.waitBeat);
+    let joined = false;
+    try {
+      await fs.runTransaction(async (tx) => {
+        const l = await tx.get(lobbyRef), g = await tx.get(gref);
+        joined = g.exists && g.data().status === 'playing';
+        if (joined) return;
+        if (l.exists && l.data().waiting && l.data().waiting.gameId === id) tx.set(lobbyRef, { waiting: null });
+        if (g.exists) tx.delete(gref);
+      });
+    } catch (e) {}
+    return joined;
+  }
   async function cancelSearch() {
+    if (ON.kind === 'firebase') {
+      const id = ON.waitingId, seat = ON.waitingSeat;
+      ON.seeking = false; renderOnlineMenu();
+      if (!id) return;
+      const joined = await fbCancel(id);
+      stopWaiting(false);
+      if (joined) enterOnline(id, seat);
+      return renderOnlineMenu();
+    }
     const id = ON.waitingId;
     ON.seeking = false;
     renderOnlineMenu();
@@ -1117,7 +1245,12 @@ body {
     const ref = ON.db.doc('games/' + gameId);
     if (gameUnsub) gameUnsub();
     gameUnsub = ref.onSnapshot((s) => syncOnline(s), () => toast('대국 연결이 끊겼어요. 새로고침해 주세요.'));
-    if (ON.room) {
+    clearInterval(ON.ping);
+    if (ON.kind === 'firebase') {
+      const beat = () => { if (G && G.gameId === gameId && !G.over) ref.update({ ['ping.' + (color === 1 ? 'white' : 'black')]: Date.now() }).catch(() => {}); };
+      beat();
+      ON.ping = setInterval(beat, PING_MS);
+    } else if (ON.room) {
       try {
         gameRoom = await ON.room.join('g-' + gameId);
         gameRoom.presence({ color, id: ON.myId }).catch(() => {});
@@ -1131,13 +1264,26 @@ body {
       } catch (e) { gameRoom = null; }
     }
   }
-  setInterval(() => { if (G && G.mode === 'online' && G.opponentGoneSince && !G.over) renderActions(); }, 5000);
+  // Firebase has no presence: the opponent counts as here while their heartbeat is fresh
+  function fbOpponentCheck() {
+    if (!G || G.mode !== 'online' || ON.kind !== 'firebase' || G.over) return;
+    const seen = G.oppPing || G.startedAt || 0;
+    const here = Date.now() - seen < GONE_MS;
+    if (here) { if (G.opponentOnline !== true) { G.opponentOnline = true; G.opponentGoneSince = 0; render(); } }
+    else if (G.opponentOnline !== false) { G.opponentOnline = false; G.opponentGoneSince = seen + GONE_MS; render(); }
+  }
+  setInterval(() => { fbOpponentCheck(); if (G && G.mode === 'online' && G.opponentGoneSince && !G.over) renderActions(); }, 5000);
 
   async function syncOnline(s) {
     if (!G || G.mode !== 'online') return;
     if (!s.exists) { toast('이 대국은 더 이상 없어요.'); store.del(ONLINE_KEY); return showMenu(); }
     const d = s.data();
     G.whiteId = d.white; G.blackId = d.black;
+    if (ON.kind === 'firebase') {
+      G.oppPing = d.ping ? d.ping[G.myColor === 1 ? 'black' : 'white'] || 0 : 0;
+      G.startedAt = G.startedAt || d.startedAt || Date.now();
+      fbOpponentCheck();
+    }
     G.status = d.status === 'over' ? 'over' : d.status;
     G.drawOffer = d.drawOffer === 'white' ? 1 : d.drawOffer === 'black' ? -1 : null;
     const moves = Array.isArray(d.moves) ? d.moves : [];
@@ -1197,6 +1343,7 @@ body {
     el.append(yes, no);
   }
   function leaveOnline() {
+    clearInterval(ON.ping);
     if (gameUnsub) gameUnsub();
     gameUnsub = null;
     if (gameRoom) gameRoom.leave().catch(() => {});
