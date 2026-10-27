@@ -135,7 +135,7 @@ body {
     <button class="btn" id="undoBtn" type="button">되돌리기 · <span id="undoN">3</span></button>
     <span class="note" id="note"></span>
   </div>
-  <p class="help">화면 어디서든 위·아래·왼쪽·오른쪽으로 밀거나 방향키(WASD)를 누르세요. 같은 숫자가 부딪히면 합쳐져요. 2048에서 멈추지 않고 4096, 8192… 끝없이 이어져요. 판이 꽉 차서 막히면 가장 큰 수를 뺀 블록 6~10개가 사라져서 게임이 끝나지 않아요. 512 이상을 새로 만들 때마다 되돌리기가 1번 늘어요. 진행 상황은 자동 저장돼요.</p>
+  <p class="help">화면 어디서든 위·아래·왼쪽·오른쪽으로 밀거나 방향키(WASD)를 누르세요. 같은 숫자가 부딪히면 합쳐져요. 2048에서 멈추지 않고 4096, 8192… 끝없이 이어져요. 판이 꽉 차서 막히면 작은 숫자부터 블록 6~10개가 사라져서 게임이 끝나지 않아요 (가장 큰 수는 남아요). 512 이상을 새로 만들 때마다 되돌리기가 1번 늘어요. 진행 상황은 자동 저장돼요.</p>
 </div>
 
 <script>
@@ -294,11 +294,13 @@ body {
     if (cleared) removeTiles(cleared);
   }
 
-  // A full, stuck board never ends the game: 6–10 random blocks vanish, but never the biggest number.
+  // A full, stuck board never ends the game: the 6–10 smallest blocks vanish, never the biggest number.
   function clearSome() {
     const top = maxTile(S.grid), cand = [];
     S.grid.forEach((row, r) => row.forEach((v, c) => { if (v && v !== top) cand.push([r, c]); }));
     for (let i = cand.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [cand[i], cand[j]] = [cand[j], cand[i]]; }
+    // smallest numbers go first; among equal numbers the pick is random
+    cand.sort((a, b) => S.grid[a[0]][a[1]] - S.grid[b[0]][b[1]]);
     const gone = cand.slice(0, Math.min(cand.length, 6 + Math.floor(Math.random() * 5)));
     gone.forEach(([r, c]) => { S.grid[r][c] = 0; });
     return gone;
