@@ -125,6 +125,18 @@ body {
 .promo button { width: 64px; height: 64px; border-radius: 12px; border: 2px solid var(--line); background: var(--sq-light); cursor: pointer; container-type: size; display: grid; place-items: center; }
 .promo button:hover { border-color: var(--accent); }
 
+.ratingcard { display: flex; align-items: baseline; gap: 10px; background: var(--card); border-radius: 16px; padding: 12px 18px; box-shadow: 0 1px 0 var(--line); }
+.ratingcard .lab { font-size: 12px; letter-spacing: .06em; color: var(--muted); }
+.ratingcard b { font-family: var(--display); font-weight: 400; font-size: 28px; color: var(--accent); font-variant-numeric: tabular-nums; }
+.ratingcard span:last-child { margin-left: auto; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.sq.win::before, .sq.lose::before { content: ''; position: absolute; inset: 0; }
+.sq.win::before { background: radial-gradient(circle, rgba(47, 158, 106, .85) 0, rgba(47, 158, 106, .25) 72%); }
+.sq.lose::before { background: radial-gradient(circle, rgba(214, 69, 69, .9) 0, rgba(214, 69, 69, .3) 72%); }
+.badge { position: absolute; top: 4%; right: 4%; width: 38%; height: 38%; border-radius: 50%; display: grid; place-items: center; color: #fff; z-index: 2; font-family: var(--display); font-size: calc(var(--sqpx, 44px) * .26); font-size: 26cqw; line-height: 1; box-shadow: 0 1px 3px rgba(0, 0, 0, .35); }
+.badge svg { width: 68%; height: 68%; }
+.badge.win { background: var(--good); }
+.badge.lose { background: var(--bad); }
+.result p { white-space: pre-line; }
 .status { text-align: center; font-family: var(--display); font-size: 17px; min-height: 24px; }
 .status.alert { color: var(--bad); }
 .moves { display: flex; gap: 4px; overflow-x: auto; padding: 2px 0 6px; scrollbar-width: thin; font-variant-numeric: tabular-nums; }
@@ -151,6 +163,7 @@ body {
   </header>
 
   <section class="menu" id="menu">
+    <div class="ratingcard" id="ratingCard"><span class="lab">내 레이팅</span><b id="ratingNum">1000</b><span id="ratingRec"></span></div>
     <div class="card">
       <h2><span class="glyph" aria-hidden="true">♞&#xFE0E;</span>컴퓨터와 대전</h2>
       <div class="field"><span>난이도</span>
@@ -621,6 +634,7 @@ body {
   const FB_SDK = 'https://www.gstatic.com/firebasejs/10.12.2/';
   const PING_MS = 20000, GONE_MS = 45000, WAIT_ALIVE_MS = 40000;
 
+  const RATING_KEY = 'chess-rating-v1', AWARD_KEY = 'chess-awarded-v1', START_RATING = 1000;
   const $ = (s) => document.querySelector(s);
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const store = {
@@ -635,6 +649,69 @@ body {
     setTimeout(() => el.remove(), 2700);
   }
   const colorName = (c) => (c === 1 ? '백' : '흑');
+
+  // ---------- rating ----------
+  // vs people: the winner gains more for beating a higher-rated player (Elo, K = 32) and the loser
+  // drops the same way; a draw gives each side +1. vs computer: win +5, draw +1, loss 0.
+  let myRating = Object.assign({ rating: START_RATING, w: 0, d: 0, l: 0 }, store.get(RATING_KEY) || {});
+  function ratingRef() {
+    if (!ON.myId) return null;
+    if (ON.kind === 'firebase' && ON.fs) return ON.fs.collection('chessRatings').doc(ON.myId);
+    if (ON.kind === 'claude' && ON.db && ON.canWrite !== false) return ON.db.doc('ratings/' + ON.myId);
+    return null;
+  }
+  async function loadRating() {
+    const ref = ratingRef();
+    if (ref) {
+      try {
+        const s = await ref.get();
+        const d = s.exists ? s.data() : null;
+        if (d && typeof d.rating === 'number') myRating = { rating: d.rating, w: d.w || 0, d: d.d || 0, l: d.l || 0 };
+      } catch (e) {}
+    }
+    store.set(RATING_KEY, myRating);
+    renderRating();
+  }
+  function renderRating() {
+    $('#ratingNum').textContent = myRating.rating;
+    $('#ratingRec').textContent = `${myRating.w}승 ${myRating.d}무 ${myRating.l}패`;
+  }
+  function eloDelta(me, opp, score) {
+    if (score === 0.5) return 1;
+    const exp = 1 / (1 + Math.pow(10, (opp - me) / 400));
+    return score === 1 ? Math.max(1, Math.round(32 * (1 - exp))) : -Math.max(1, Math.round(32 * exp));
+  }
+  async function award(key, delta, outcome) {
+    const done = store.get(AWARD_KEY) || [];
+    if (done.includes(key)) return null;
+    store.set(AWARD_KEY, done.slice(-80).concat(key));
+    await onlineReady;
+    await loadRating();
+    myRating = {
+      rating: Math.max(100, myRating.rating + delta),
+      w: myRating.w + (outcome === 'w' ? 1 : 0), d: myRating.d + (outcome === 'd' ? 1 : 0), l: myRating.l + (outcome === 'l' ? 1 : 0),
+    };
+    store.set(RATING_KEY, myRating);
+    const ref = ratingRef();
+    if (ref) ref.set({ ...myRating, updatedAt: Date.now() }).catch(() => {});
+    renderRating();
+    return myRating;
+  }
+  // called once when a game on screen ends
+  async function settle() {
+    const o = G.over, game = G;
+    const score = o.result === '1/2-1/2' ? 0.5 : (o.result === '1-0' ? 1 : -1) === G.myColor ? 1 : 0;
+    const outcome = score === 1 ? 'w' : score === 0 ? 'l' : 'd';
+    let delta, key;
+    if (G.mode === 'ai') { key = 'ai-' + G.id; delta = score === 1 ? 5 : score === 0.5 ? 1 : 0; }
+    else {
+      key = 'on-' + G.gameId;
+      const mine = (G.ratings && G.ratings[G.myColor]) || myRating.rating, theirs = (G.ratings && G.ratings[-G.myColor]) || START_RATING;
+      delta = eloDelta(mine, theirs, score);
+    }
+    const r = await award(key, delta, outcome);
+    if (r && G === game) { G.ratingNote = delta ? `레이팅 ${delta > 0 ? '+' : ''}${delta} → ${r.rating}` : `레이팅 그대로 ${r.rating}`; render(); }
+  }
 
   const E = ChessEngine();
   // G: the game on screen
@@ -698,7 +775,12 @@ body {
     return v ? `<span class="pc ${v > 0 ? 'w' : 'b'}">${GLYPH[Math.abs(v)]}${VS}</span>` : '';
   }
   function renderBoard() {
-    const checkSq = E.inCheck() ? E.kings[E.side === 1 ? 0 : 1] : -1;
+    const checkSq = !G.over && E.inCheck() ? E.kings[E.side === 1 ? 0 : 1] : -1;
+    let winSq = -1, loseSq = -1;
+    if (G.over && G.over.result !== '1/2-1/2') {
+      const winner = G.over.result === '1-0' ? 1 : -1;
+      winSq = E.kings[winner === 1 ? 0 : 1]; loseSq = E.kings[winner === 1 ? 1 : 0];
+    }
     const last = G.lastMove;
     squares.forEach((b, i) => {
       const sq = sqAt(i), rank = sq >> 4, file = sq & 7, row = Math.floor(i / 8), col = i % 8;
@@ -707,10 +789,14 @@ body {
       if (last && (last.from === sq || last.to === sq)) cls += ' last';
       if (sq === selected) cls += ' sel';
       if (sq === checkSq) cls += ' check';
+      if (sq === winSq) cls += ' win';
+      if (sq === loseSq) cls += ' lose';
       const t = targets.find((m) => m.to === sq);
       if (t) cls += ' target' + (t.cap ? ' capture' : '');
       b.className = cls;
       let html = pieceHTML(E.pieceAt(sq));
+      if (sq === winSq) html += '<span class="badge win" aria-label="승리"><svg viewBox="0 0 24 24"><path d="M3 8l4.5 4L12 5l4.5 7L21 8l-2 11H5z" fill="currentColor"/></svg></span>';
+      if (sq === loseSq) html += `<span class="badge lose" aria-label="패배">${G.over.reason === 'checkmate' ? '#' : '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/></svg>'}</span>`;
       if (row === 7) html += `<span class="coord f">${'abcdefgh'[file]}</span>`;
       if (col === 0) html += `<span class="coord r">${rank + 1}</span>`;
       b.innerHTML = html;
@@ -754,11 +840,13 @@ body {
   function playerBar(el, color) {
     const me = color === G.myColor;
     let name, avatar = '';
-    if (G.mode === 'ai') name = me ? '나' : `컴퓨터 · ${LEVELS[G.level].name}`;
+    if (G.mode === 'ai') name = me ? `나 (${myRating.rating})` : `컴퓨터 · ${LEVELS[G.level].name}`;
     else {
       const id = color === 1 ? G.whiteId : G.blackId;
       const p = id && profiles[id];
       name = me ? (p && p.name ? `${p.name} (나)` : '나') : (p && p.name) || '상대';
+      const r = G.ratings && G.ratings[color];
+      if (r) name += ` · ${r}`;
       if (p && p.avatarUrl) avatar = p.avatarUrl;
     }
     const cap = captured();
@@ -808,8 +896,14 @@ body {
     renderActions();
     renderOffer();
     // result card
-    $('#result').hidden = !G.over || viewingResult;
-    if (G.over) { const r = resultText(); $('#resTitle').textContent = r.title; $('#resText').textContent = r.text; }
+    if (G.over && !G.overSeen) {
+      G.overSeen = Date.now();
+      settle();
+      setTimeout(() => { if (G) render(); }, 1600);
+    }
+    const showCard = G.over && !viewingResult && Date.now() - (G.overSeen || 0) >= 1500;
+    $('#result').hidden = !showCard;
+    if (G.over) { const r = resultText(); $('#resTitle').textContent = r.title; $('#resText').textContent = r.text + (G.ratingNote ? `\n${G.ratingNote}` : ''); }
   }
   function resultText() {
     const o = G.over;
@@ -907,7 +1001,7 @@ body {
   function startAI(level, colorChoice) {
     const myColor = colorChoice === 'r' ? (Math.random() < 0.5 ? 1 : -1) : colorChoice === 'b' ? -1 : 1;
     E.load(START);
-    G = { mode: 'ai', level, colorChoice, myColor, san: [], uci: [], lastMove: null, over: null, thinking: false };
+    G = { mode: 'ai', id: newId(), level, colorChoice, myColor, san: [], uci: [], lastMove: null, over: null, thinking: false };
     saveAI();
     showGame();
     if (myColor === -1) aiTurn();
@@ -916,13 +1010,13 @@ body {
     const s = store.get(AI_KEY);
     if (!s) return;
     E.load(START);
-    G = { mode: 'ai', level: s.level, colorChoice: s.colorChoice, myColor: s.myColor, san: [], uci: [], lastMove: null, over: null, thinking: false };
+    G = { mode: 'ai', id: s.id || newId(), level: s.level, colorChoice: s.colorChoice, myColor: s.myColor, san: [], uci: [], lastMove: null, over: null, thinking: false };
     for (const u of s.moves) { const m = E.findUci(u); if (!m) break; G.san.push(E.san(m)); G.uci.push(u); E.play(m); G.lastMove = { from: m.from, to: m.to }; }
     showGame();
     if (E.side !== G.myColor && !E.status().over) aiTurn();
   }
   function saveAI() {
-    store.set(AI_KEY, { level: G.level, colorChoice: G.colorChoice, myColor: G.myColor, moves: G.uci, over: !!G.over });
+    store.set(AI_KEY, { id: G.id, level: G.level, colorChoice: G.colorChoice, myColor: G.myColor, moves: G.uci, over: !!G.over });
   }
   async function aiTurn() {
     const token = ++aiToken;
@@ -938,7 +1032,7 @@ body {
   }
   function undo() {
     if (!G.san.length) return;
-    aiToken++; G.thinking = false; G.over = null;
+    aiToken++; G.thinking = false; G.over = null; G.overSeen = 0; G.ratingNote = '';
     const pop = () => { E.takeBack(); G.san.pop(); G.uci.pop(); };
     pop();
     while (E.side !== G.myColor && G.san.length) pop();
@@ -980,6 +1074,7 @@ body {
       await initFirebase();
       ON.ready = true;
       renderOnlineMenu();
+      await loadRating();
       return checkRejoin();
     }
     ON.kind = 'claude';
@@ -1001,6 +1096,7 @@ body {
     if (!ON.myPeer) ON.myPeer = tabId;
     ON.ready = true;
     renderOnlineMenu();
+    await loadRating();
     return checkRejoin();
   }
   // come back to a game in progress after a reload
@@ -1087,7 +1183,7 @@ body {
       if (g.exists && g.data().status === 'waiting') {
         await lobby().set({ waiting: null });
         const seat = g.data().white ? 'black' : 'white';
-        await ref.update({ [seat]: ON.myId, [seat + 'Peer']: ON.myPeer, status: 'playing', startedAt: Date.now() });
+        await ref.update({ [seat]: ON.myId, [seat + 'Peer']: ON.myPeer, [seat + 'Rating']: myRating.rating, status: 'playing', startedAt: Date.now() });
         await dropOwnWaiting();
         return enterOnline(w.gameId, seat === 'white' ? 1 : -1);
       }
@@ -1101,6 +1197,7 @@ body {
     await ON.db.doc('games/' + gameId).set({
       white: seat === 'white' ? ON.myId : null, black: seat === 'black' ? ON.myId : null,
       whitePeer: seat === 'white' ? ON.myPeer : null, blackPeer: seat === 'black' ? ON.myPeer : null,
+      [seat + 'Rating']: myRating.rating,
       status: 'waiting', moves: [], drawOffer: null, result: null, reason: null, createdAt: Date.now(),
     });
     await lobby().set({ waiting: { gameId, peer: ON.myPeer, at: Date.now() } });
@@ -1152,7 +1249,7 @@ body {
           const g = await tx.get(gref);
           if (g.exists && g.data().status === 'waiting') {
             const seat = g.data().white ? 'black' : 'white';
-            tx.update(gref, { [seat]: ON.myId, status: 'playing', startedAt: Date.now() });
+            tx.update(gref, { [seat]: ON.myId, [seat + 'Rating']: myRating.rating, status: 'playing', startedAt: Date.now() });
             tx.set(lobbyRef, { waiting: null });
             out = { join: w.gameId, color: seat === 'white' ? 1 : -1 };
             return;
@@ -1161,6 +1258,7 @@ body {
         const gameId = newId(), seat = Math.random() < 0.5 ? 'white' : 'black';
         tx.set(fs.collection('chessGames').doc(gameId), {
           white: seat === 'white' ? ON.myId : null, black: seat === 'black' ? ON.myId : null,
+          [seat + 'Rating']: myRating.rating,
           status: 'waiting', moves: [], drawOffer: null, result: null, reason: null, createdAt: Date.now(), ping: {},
         });
         tx.set(lobbyRef, { waiting: { gameId, uid: ON.myId, at: Date.now() } });
@@ -1286,6 +1384,7 @@ body {
     }
     G.status = d.status === 'over' ? 'over' : d.status;
     G.drawOffer = d.drawOffer === 'white' ? 1 : d.drawOffer === 'black' ? -1 : null;
+    G.ratings = { 1: d.whiteRating || START_RATING, '-1': d.blackRating || START_RATING };
     const moves = Array.isArray(d.moves) ? d.moves : [];
     let applied = false;
     for (let i = G.uci.length; i < moves.length; i++) {
@@ -1387,7 +1486,8 @@ body {
   addEventListener('pagehide', () => { if (ON.seeking) cancelSearch(); });
 
   showMenu();
-  initOnline();
+  renderRating();
+  const onlineReady = initOnline().catch(() => {});
 })();
 </script>
 </body>

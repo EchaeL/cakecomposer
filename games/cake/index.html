@@ -203,7 +203,7 @@ a.btn { text-decoration: none; }
     </div>
   </div>
   <span class="grow" id="grow"></span>
-  <p class="help">쟁반의 접시를 쓰면 그 자리에 바로 새 접시가 채워져요. 접시를 테이블 빈칸으로 끌어다 놓거나, 눌러서 고른 뒤 빈칸을 누르세요. 위·아래·옆으로 붙은 접시끼리 같은 케이크 조각이 한쪽으로 모이고, 한 접시가 같은 케이크 6조각으로 채워지면 완성되어 사라져요. 케이크를 8판 완성할 때마다 테이블이 아래로 한 줄, 옆으로 한 칸씩 번갈아 끝없이 늘어나요. − 버튼이나 두 손가락으로 오므리면 더 많은 접시가 한 화면에 들어와요. 판이 꽉 차면 끝!</p>
+  <p class="help">쟁반의 접시를 쓰면 그 자리에 바로 새 접시가 채워져요. 접시를 테이블 빈칸으로 끌어다 놓거나, 눌러서 고른 뒤 빈칸을 누르세요. 위·아래·옆으로 붙은 접시끼리 같은 케이크 조각이 한쪽으로 모이고, 한 접시가 같은 케이크 6조각으로 채워지면 완성되어 사라져요. 같은 케이크로 6조각을 채울 수 있으면 다른 조각과 자리를 바꿔서라도 꼭 완성돼요. 테이블이 처음 꽉 차면 접시 6~10개가 사라지고, 두 번째로 꽉 차면 끝나요. 판이 꽉 차면 끝!</p>
 </div>
 
 <div class="over" id="over" hidden>
@@ -287,10 +287,10 @@ a.btn { text-decoration: none; }
 
   // ---------- state ----------
   function fresh() {
-    return { rows: START_ROWS, cols: START_COLS, zoom: 0, board: Array(START_ROWS * START_COLS).fill(null), tray: [null, null, null], score: 0, clears: 0, combo: 0, shuffles: 3, over: false };
+    return { rows: START_ROWS, cols: START_COLS, zoom: 0, rescued: false, board: Array(START_ROWS * START_COLS).fill(null), tray: [null, null, null], score: 0, clears: 0, combo: 0, shuffles: 3, over: false };
   }
   const bestScore = () => Math.max(+store.get(BEST_KEY) || 0, S ? S.score : 0);
-  const typeCount = () => Math.min(CAKES.length, 4 + Math.floor(S.clears / 6));
+  const typeCount = () => Math.min(CAKES.length, 5 + Math.floor(S.clears / 5));
   const level = () => 1 + Math.floor(S.clears / 6);
   const save = () => {
     store.set(SAVE_KEY, JSON.stringify(S));
@@ -318,7 +318,7 @@ a.btn { text-decoration: none; }
     const emptyCells = [...Array(n).keys()].filter((i) => !B[i]);
     const pressure = 1 - emptyCells.length / n;   // 0 = empty table, 1 = full
     const T = typeCount(), lvl = level();
-    const maxKinds = lvl < 3 ? 2 : 3;
+    const maxKinds = lvl < 2 ? 3 : 4;
     const present = new Set();
     B.forEach((p) => p && p.s.forEach((g) => present.add(g.t)));
     const crowded = pressure > 0.55;
@@ -336,28 +336,30 @@ a.btn { text-decoration: none; }
     let helped = 0;
     for (let k = 0; k < count; k++) {
       const live = spots.filter((s) => !used.has(s.e));
-      const pHelp = Math.min(0.92, Math.max(0.3, 0.55 - 0.025 * (lvl - 1)) + pressure * 0.45);
-      const mustHelp = k === count - 1 && helped === 0 && emptyCells.length <= 7 && !keep.some(helps);
+      const pHelp = Math.min(0.6, Math.max(0.2, 0.35 - 0.02 * (lvl - 1)) + pressure * 0.2);
+      const mustHelp = k === count - 1 && helped === 0 && emptyCells.length <= 3 && !keep.some(helps);
       const p = { s: [] };
       if (live.length && (mustHelp || Math.random() < pHelp)) {
         // favour spots surrounded by nearly finished stacks
         const s = weighted(live, (s) => 1 + [...s.want.values()].reduce((a, b) => a + b * b, 0));
         used.add(s.e);
         const kinds = [...s.want.entries()].sort((a, b) => b[1] - a[1]);
-        const take = kinds.length > 1 && maxKinds > 1 && Math.random() < 0.4 ? 2 : 1;
+        const take = kinds.length > 1 && Math.random() < 0.5 ? 2 : 1;
         for (const [t, c] of kinds.slice(0, take)) {
           const need = Math.max(1, MAX - c);
-          addS(p, t, Math.random() < 0.55 ? Math.min(need, take === 1 ? 4 : 3) : 1 + rand(Math.min(need, 2)));
+          // finishing a cake outright is rare; usually it brings part of what is missing
+          addS(p, t, Math.random() < 0.3 ? Math.min(need, 4) : 1 + rand(Math.max(1, Math.min(need - 1, 3))));
         }
-        if (p.s.length < maxKinds && total(p) < 5 && Math.random() < 0.2 + 0.04 * lvl) {
-          addS(p, pickType(p.s.map((g) => g.t)), 1);
+        // other cakes on the same plate turn the placement into a trade-off
+        while (p.s.length < maxKinds && total(p) < MAX && Math.random() < 0.45 + 0.03 * lvl) {
+          addS(p, pickType(p.s.map((g) => g.t)), 1 + rand(Math.min(2, MAX - total(p))));
         }
         helped++;
       } else {
-        const kinds = weighted([1, 2, 3], (k) => k > maxKinds ? 0 : [0, 0.45, 0.4, 0.12 + 0.03 * lvl][k]);
+        const kinds = weighted([1, 2, 3, 4], (k) => k > maxKinds ? 0 : [0, 0.18, 0.4, 0.3, 0.12 + 0.02 * lvl][k]);
         const chosen = [];
         for (let i = 0; i < kinds; i++) chosen.push(pickType(chosen));
-        chosen.forEach((t) => addS(p, t, kinds === 1 ? 1 + rand(3) : 1 + rand(2)));
+        chosen.forEach((t) => { if (total(p) < MAX) addS(p, t, Math.min(MAX - total(p), kinds === 1 ? 2 + rand(3) : 1 + rand(2))); });
       }
       out.push(p);
     }
@@ -459,9 +461,7 @@ a.btn { text-decoration: none; }
     $('#clears').textContent = S.clears;
     $('#shufN').textContent = S.shuffles;
     $('#shuffleBtn').disabled = S.shuffles <= 0 || S.over;
-    const left = GROW_EVERY - (S.clears % GROW_EVERY);
-    const nextIsRow = (Math.floor(S.clears / GROW_EVERY) + 1) % 2 === 1;
-    $('#grow').textContent = `테이블 ${S.cols}×${S.rows} · ${left}판 더 완성하면 ${nextIsRow ? '아래로 한 줄' : '옆으로 한 칸'} 늘어나요`;
+    $('#grow').textContent = S.rescued ? '구조 찬스를 썼어요 · 다음에 꽉 차면 끝나요' : '구조 찬스 1번 · 테이블이 꽉 차면 접시 6~10개를 치워 줘요';
     const T = typeCount();
     $('#case').innerHTML = '<span>진열대</span>' + CAKES.map((c, i) => i < T
       ? `<span class="chip"><span class="dot" style="background:${c.top}"></span>${c.name}</span>`
@@ -537,6 +537,45 @@ a.btn { text-decoration: none; }
     return done;
   }
 
+  // Where can 6 slices of cake t meet? Either on the plate just checked (fed by all its
+  // neighbours) or on one neighbour (fed by that plate). Prefer the plate that already
+  // holds the most of t, then the one with fewer other cakes on it.
+  function wholePlan(c, group, t) {
+    const B = S.board, plans = [];
+    const sumAll = group.reduce((a, i) => a + cnt(B[i], t), 0);
+    if (sumAll >= MAX) plans.push({ target: c, donors: group.filter((i) => i !== c) });
+    for (const n of group) if (n !== c && cnt(B[n], t) + cnt(B[c], t) >= MAX) plans.push({ target: n, donors: [c] });
+    if (!plans.length) return null;
+    const others = (i) => total(B[i]) - cnt(B[i], t);
+    plans.sort((a, b) => cnt(B[b.target], t) - cnt(B[a.target], t) || others(a.target) - others(b.target) || (a.target === c ? -1 : 1));
+    return plans[0];
+  }
+  async function makeWhole(T, donors, t) {
+    const B = S.board, changed = new Set([T, ...donors]);
+    donors = donors.slice().sort((a, b) => cnt(B[b], t) - cnt(B[a], t));
+    let guard = 0;
+    while (cnt(B[T], t) < MAX && guard++ < 12) {
+      const d = donors.find((i) => B[i] && cnt(B[i], t));
+      if (d === undefined) break;
+      const round = [];
+      const pIn = clone(B[T]); addS(pIn, t, 1);
+      round.push(() => flySlice(d, T, t, slicesOf(pIn).lastIndexOf(t)));
+      if (total(B[T]) >= MAX) {
+        // no room: send one other slice from the target to a donor with space
+        const o = B[T].s.find((g) => g.t !== t);
+        const room = (i) => MAX - total(B[i]) + (i === d ? 1 : 0);
+        const dest = donors.filter((i) => B[i] && room(i) > 0).sort((a, b) => cnt(B[b], o.t) - cnt(B[a], o.t))[0];
+        if (dest === undefined) break;
+        const pOut = clone(B[dest]); addS(pOut, o.t, 1);
+        const oi = slicesOf(pOut).lastIndexOf(o.t);
+        round.unshift(() => flySlice(T, dest, o.t, oi));
+        changed.add(dest);
+      }
+      await Promise.all(round.map((f) => f()));
+    }
+    return [...changed];
+  }
+
   // Slices of one cake flow between touching plates toward the plate that already holds
   // the most of that cake (and has room). Every plate that changes is checked again,
   // so merges can chain across the table.
@@ -550,6 +589,13 @@ a.btn { text-decoration: none; }
         if (!B[c] || !cnt(B[c], t)) continue;
         const group = [c, ...nbrs(c).filter((j) => B[j] && cnt(B[j], t))];
         if (group.length < 2) continue;
+        // a whole cake is possible: always make it, trading other slices out of the way
+        const whole = wholePlan(c, group, t);
+        if (whole) {
+          queue.push(...await makeWhole(whole.target, whole.donors, t));
+          finished.push(...await sweep());
+          continue;
+        }
         const recv = group.filter((i) => total(B[i]) < MAX && !sent.has(`${i}:${t}`));
         if (!recv.length) continue;
         const others = (i) => total(B[i]) - cnt(B[i], t);
@@ -583,7 +629,8 @@ a.btn { text-decoration: none; }
     return finished;
   }
 
-  function growTable() {
+  function growTable() { return false; }
+  function oldGrowTable() {
     // growth alternates: a row below, then a column to the right, then a row ...
     const k = Math.floor(S.clears / GROW_EVERY);
     const rows = Math.max(S.rows, START_ROWS + Math.ceil(k / 2));
@@ -631,13 +678,27 @@ a.btn { text-decoration: none; }
     // the used slot is refilled right away, based on the table after the merge
     S.tray[idx] = genPlates(1, S.tray.filter(Boolean))[0];
     renderTray(idx);
-    if (!S.board.some((p) => !p)) { S.over = true; save(); fillOver(); $('#over').hidden = false; }
+    if (!S.board.some((p) => !p)) {
+      if (!S.rescued) await rescue();
+      else { S.over = true; save(); fillOver(); $('#over').hidden = false; }
+    }
     renderStats();
     renderBoard();
     save();
     busy = false;
   }
 
+  // The first time the table fills, 6–10 random plates are cleared away. The next time it is over.
+  async function rescue() {
+    S.rescued = true;
+    const full = [...Array(N()).keys()].filter((i) => S.board[i]);
+    for (let i = full.length - 1; i > 0; i--) { const j = rand(i + 1); [full[i], full[j]] = [full[j], full[i]]; }
+    const pick = full.slice(0, 6 + rand(5));
+    pick.forEach((i) => cells[i].classList.add('vanish'));
+    await sleep(RM ? 0 : 420);
+    pick.forEach((i) => { S.board[i] = null; renderCell(i); });
+    toast(`테이블이 꽉 차서 접시 ${pick.length}개를 치웠어요. 다음에 꽉 차면 끝!`);
+  }
   function fillOver() {
     $('#overScore').textContent = S.score.toLocaleString();
     $('#overNote').textContent = `완성한 케이크 ${S.clears}판 · 테이블 ${S.rows}줄 · 최고 ${bestScore().toLocaleString()}점`;
