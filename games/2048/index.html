@@ -61,7 +61,7 @@ body {
 .stat:first-child b { color: var(--accent); }
 
 .board {
-  position: relative; width: min(100%, calc(100dvh - 260px)); min-width: 240px; aspect-ratio: 1; max-width: 100%;
+  position: relative; width: min(100%, calc(100dvh - 330px)); min-width: 240px; aspect-ratio: 1; max-width: 100%;
   margin: 0 auto; box-sizing: border-box; padding: var(--g); border-radius: 18px; background: var(--board);
   box-shadow: 0 6px 0 rgba(35, 64, 74, .12);
 }
@@ -86,6 +86,22 @@ body {
 @keyframes appear { from { transform: scale(0); } }
 @keyframes merge { 50% { transform: scale(1.16); } }
 
+.vault { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; align-items: center; }
+.vault .lab { grid-column: 1 / -1; display: flex; justify-content: space-between; font-size: 12px; letter-spacing: .06em; color: var(--muted); }
+.vault .lab b { font-weight: 400; color: var(--accent); letter-spacing: 0; }
+.vslot {
+  aspect-ratio: 1; border-radius: 12px; border: 2px dashed var(--line); background: transparent; padding: 0; cursor: pointer;
+  display: grid; place-items: center; font-family: var(--display); font-variant-numeric: tabular-nums; line-height: 1; color: var(--muted);
+  font-size: 13px; container-type: size; max-height: 72px; justify-self: center; width: 100%;
+}
+.vslot.full { border-style: solid; border-color: transparent; box-shadow: inset 0 -4px 0 rgba(0, 0, 0, .12); }
+.vslot.full span { font-size: 40cqw; }
+.vslot.sel { border-style: solid; border-color: var(--accent); background: rgba(255, 93, 122, .12); animation: blink 1s ease-in-out infinite; }
+.vslot:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.board.picking .tile .face { outline: 3px solid rgba(255, 93, 122, .55); outline-offset: -3px; cursor: pointer; }
+.tile.stash .face { animation: stash .22s ease-in forwards; }
+@keyframes stash { to { transform: scale(.2) translateY(60%); opacity: 0; } }
+@keyframes blink { 50% { background: rgba(255, 93, 122, .25); } }
 .tools { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .note { font-size: 13px; color: var(--muted); }
 .help { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--muted); }
@@ -131,15 +147,20 @@ body {
     </div>
   </div>
 
+ <div class="vault" id="vault" aria-label="블록 보관함">
+    <div class="lab"><span>보관함</span><b id="vaultHint"></b></div>
+  </div>
+
   <div class="tools">
     <button class="btn" id="undoBtn" type="button">되돌리기 · <span id="undoN">3</span></button>
     <span class="note" id="note"></span>
   </div>
-  <p class="help">화면 어디서든 위·아래·왼쪽·오른쪽으로 밀거나 방향키(WASD)를 누르세요. 같은 숫자가 부딪히면 합쳐져요. 2048에서 멈추지 않고 4096, 8192… 끝없이 이어져요. 판이 꽉 차서 막히면 작은 숫자부터 블록 6~10개가 사라져서 게임이 끝나지 않아요 (가장 큰 수는 남아요). 512 이상을 새로 만들 때마다 되돌리기가 1번 늘어요. 진행 상황은 자동 저장돼요.</p>
+  <p class="help">화면 어디서든 위·아래·왼쪽·오른쪽으로 밀거나 방향키(WASD)를 누르세요. 같은 숫자가 부딪히면 합쳐져요. 2048에서 멈추지 않고 4096, 8192… 끝없이 이어져요. 판이 꽉 차서 막히면 작은 숫자부터 블록 6~10개가 사라져서 게임이 끝나지 않아요 (가장 큰 수는 남아요). 512 이상을 새로 만들 때마다 되돌리기가 1번 늘어요. 방해되는 블록은 보관함 빈칸을 누른 뒤 블록을 눌러 넣어 두고, 보관한 블록을 누르면 판의 빈칸 아무 데나 다시 나와요. 진행 상황은 자동 저장돼요.</p>
 </div>
 
 <script>
 (() => {
+  const VAULT = 5;
   const SIZE = 4, SAVE_KEY = '2048-v1', BEST_KEY = '2048-best', MOVE_MS = 110;
   const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
   // sea glass → sunshine → coral → violet → deep night, then hues keep cycling for anything bigger
@@ -164,7 +185,7 @@ body {
   const emptyGrid = () => Array.from({ length: SIZE }, () => Array(SIZE).fill(0));
   const maxTile = (g) => Math.max(...g.flat());
   function fresh() {
-    const s = { grid: emptyGrid(), score: 0, undos: 3, prev: null, over: false };
+    const s = { grid: emptyGrid(), score: 0, undos: 3, prev: null, over: false, vault: Array(VAULT).fill(0) };
     S = s; addRandom(); addRandom();
     return s;
   }
@@ -236,7 +257,7 @@ body {
     if (dc === 1) cols.reverse();
     const merged = new Set(), dead = [];
     let moved = false, gained = 0, bonus = 0;
-    const before = { grid: S.grid.map((r) => r.slice()), score: S.score };
+    const before = { grid: S.grid.map((r) => r.slice()), score: S.score, vault: S.vault.slice() };
 
     for (const r of rows) for (const c of cols) {
       const t = at[r][c];
@@ -254,7 +275,7 @@ body {
           o.v *= 2;
           merged.add(o.id);
           gained += o.v;
-          if (o.v >= 512 && o.v > maxTile(before.grid)) bonus++;
+          if (o.v >= 512 && o.v > Math.max(maxTile(before.grid), ...before.vault)) bonus++;
           moved = true;
           nr = null;
         }
@@ -316,10 +337,86 @@ body {
     toast(`판이 꽉 차서 블록 ${gone.length}개가 사라졌어요`);
   }
 
+  // ---------- storage (5 slots) ----------
+  // Tap an empty slot, then a block: the block goes in. Tap a stored block: it comes back to a random empty cell.
+  let vaultSel = -1;
+  const vaultEl = $('#vault');
+  const slotEls = [];
+  for (let i = 0; i < VAULT; i++) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'vslot';
+    b.addEventListener('click', () => onSlot(i));
+    vaultEl.appendChild(b); slotEls.push(b);
+  }
+  function renderVault() {
+    slotEls.forEach((b, i) => {
+      const v = S.vault[i];
+      b.className = 'vslot' + (v ? ' full' : '') + (i === vaultSel ? ' sel' : '');
+      if (v) {
+        const [bg, fg] = colorOf(v);
+        b.style.background = bg; b.style.color = fg;
+        b.innerHTML = `<span>${v}</span>`;
+        b.style.setProperty('font-size', '');
+        b.querySelector('span').style.fontSize = `${[0, 40, 40, 34, 28, 23, 19, 16][Math.min(String(v).length, 7)]}cqw`;
+        b.setAttribute('aria-label', `보관한 ${v} 꺼내기`);
+      } else {
+        b.style.background = ''; b.style.color = '';
+        b.textContent = i === vaultSel ? '선택' : '';
+        b.setAttribute('aria-label', '빈 보관 칸');
+      }
+    });
+    $('#board').classList.toggle('picking', vaultSel >= 0);
+    $('#vaultHint').textContent = vaultSel >= 0 ? '넣을 블록을 누르세요' : S.vault.some(Boolean) ? '누르면 판으로 꺼내요' : '';
+  }
+  function onSlot(i) {
+    if (pending) finish();
+    if (S.vault[i]) return takeOut(i);
+    vaultSel = vaultSel === i ? -1 : i;
+    renderVault();
+  }
+  function stash(r, c) {
+    const i = vaultSel;
+    vaultSel = -1;
+    if (i < 0 || S.vault[i] || !S.grid[r][c]) return renderVault();
+    if (pending) finish();
+    const t = tiles.find((x) => x.r === r && x.c === c);
+    S.vault[i] = S.grid[r][c];
+    S.grid[r][c] = 0;
+    S.prev = null;                              // storage moves can't be undone
+    if (t) {
+      tiles = tiles.filter((x) => x !== t);
+      t.el.classList.add('stash');
+      setTimeout(() => t.el.remove(), RM ? 0 : 230);
+    }
+    renderStats(); save();
+  }
+  function takeOut(i) {
+    const free = [];
+    S.grid.forEach((row, r) => row.forEach((v, c) => { if (!v) free.push([r, c]); }));
+    if (!free.length) return toast('판에 빈칸이 없어요');
+    const [r, c] = free[Math.floor(Math.random() * free.length)];
+    S.grid[r][c] = S.vault[i];
+    S.vault[i] = 0;
+    vaultSel = -1;
+    S.prev = null;
+    makeTile(S.grid[r][c], r, c, 'new');
+    if (!canMove()) removeTiles(clearSome());
+    renderStats(); save();
+  }
+  // a tap (not a swipe) on the board while a slot is selected
+  function onTap(x, y) {
+    if (vaultSel < 0) return;
+    const el = document.elementFromPoint(x, y);
+    const tileEl = el && el.closest('.tile');
+    const t = tileEl && tiles.find((k) => k.el === tileEl);
+    if (t) stash(t.r, t.c);
+    else { vaultSel = -1; renderVault(); }
+  }
+
   function undo() {
     if (!S.prev || S.undos <= 0) return;
     if (pending) finish();
-    S.grid = S.prev.grid; S.score = S.prev.score; S.prev = null; S.undos--; S.over = false;
+    S.grid = S.prev.grid; S.score = S.prev.score; if (S.prev.vault) S.vault = S.prev.vault; S.prev = null; S.undos--; S.over = false;
     $('#over').hidden = true;
     rebuild(); renderStats(); save();
   }
@@ -328,7 +425,8 @@ body {
   function renderStats() {
     $('#score').textContent = S.score.toLocaleString();
     $('#best').textContent = Math.max(+store.get(BEST_KEY) || 0, S.score).toLocaleString();
-    const top = maxTile(S.grid);
+    const top = Math.max(maxTile(S.grid), ...S.vault);
+    renderVault();
     $('#top').textContent = top.toLocaleString();
     $('#undoN').textContent = S.undos;
     $('#undoBtn').disabled = !S.prev || S.undos <= 0;
@@ -390,10 +488,14 @@ body {
     const dx = e.clientX - sw.x, dy = e.clientY - sw.y;
     if (Math.max(Math.abs(dx), Math.abs(dy)) < 28) return;
     sw.done = true;
+    if (vaultSel >= 0) { vaultSel = -1; renderVault(); }
     move(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up'));
   });
   const endSwipe = () => { sw = null; };
-  document.body.addEventListener('pointerup', endSwipe);
+  document.body.addEventListener('pointerup', (e) => {
+    const s0 = sw; sw = null;
+    if (s0 && !s0.done && Math.hypot(e.clientX - s0.x, e.clientY - s0.y) < 12) onTap(e.clientX, e.clientY);
+  });
   document.body.addEventListener('pointercancel', endSwipe);
 
   addEventListener('resize', sizeTiles);
@@ -401,6 +503,7 @@ body {
   // ---------- boot ----------
   try { const d = JSON.parse(store.get(SAVE_KEY)); if (valid(d)) S = Object.assign({ score: 0, undos: 3, prev: null, over: false }, d); } catch (e) {}
   if (!S) fresh();
+  if (!Array.isArray(S.vault) || S.vault.length !== VAULT) { S.vault = Array(VAULT).fill(0); save(); }
   if (S.over || !canMove()) { S.over = false; clearSome(); save(); }
   document.querySelector('.grid').innerHTML = '<div></div>'.repeat(SIZE * SIZE);
   sizeTiles();
