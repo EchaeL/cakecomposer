@@ -543,40 +543,51 @@ body {
   well.addEventListener('pointerdown', (e) => {
     if (e.target.closest('button, a, .overlay') || state !== 'play' || e.button > 0) return;
     try { well.setPointerCapture(e.pointerId); } catch (err) {}
-    touch = { x0: e.clientX, y0: e.clientY, t0: performance.now(), cx: 0, cy: 0, moved: false, axis: null };
+    const now = performance.now();
+    touch = { x0: e.clientX, y0: e.clientY, t0: now, lx: e.clientX, ly: e.clientY, lt: now, ax: e.clientX, cx: 0, down: 0, moved: false, fastSince: 0, fastY: 0, sideMoves: [] };
   });
-  // Each gesture locks to one direction once the finger has travelled a little, so a fast
-  // downward flick can no longer nudge the piece sideways on the way down.
-  const LOCK_PX = 16, STEP_X = 1.3, STEP_Y = 1.15;
+  // Moves follow the finger in any direction, and the direction can change mid-gesture.
+  // Only while the finger is flicking down fast is sideways drift ignored, and sideways steps
+  // taken just before a flick-drop are undone, so a quick downward swipe lands where it was aimed.
+  const STEP = 0.9, FAST_DOWN = 0.6;
   well.addEventListener('pointermove', (e) => {
     if (!touch || !live()) return;
-    const dx = e.clientX - touch.x0, dy = e.clientY - touch.y0;
-    if (!touch.axis) {
-      if (Math.hypot(dx, dy) < LOCK_PX) return;
-      touch.axis = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'x' : 'y';
-      touch.moved = true;
-    }
-    if (touch.axis === 'x') {
-      const tx = Math.trunc(dx / (CELL * STEP_X));
-      while (touch.cx < tx) { move(1, 0); touch.cx++; }
-      while (touch.cx > tx) { move(-1, 0); touch.cx--; }
-    } else if (dy > 0) {
-      const ty = Math.trunc(dy / (CELL * STEP_Y));
-      if (ty > touch.cy) {
-        while (touch.cy < ty) { if (move(0, 1)) G.score += 1; touch.cy++; }
-        renderStats();
-      }
+    const now = performance.now();
+    const mx = e.clientX - touch.lx, my = e.clientY - touch.ly, dt = Math.max(1, now - touch.lt);
+    const vy = my / dt, vx = mx / dt;
+    touch.lx = e.clientX; touch.ly = e.clientY; touch.lt = now;
+    if (Math.hypot(e.clientX - touch.x0, e.clientY - touch.y0) > 12) touch.moved = true;
+    const fastDown = vy > FAST_DOWN && vy > Math.abs(vx) * 1.5;
+    // sideways position counts from an anchor; during a fast flick the anchor follows the finger
+    if (fastDown) { if (!touch.fastSince) { touch.fastSince = now; touch.fastY = e.clientY - my; } touch.ax += mx; }
+    else if (vy < 0.25) touch.fastSince = 0;
+    const step = CELL * STEP;
+    const tx = Math.trunc((e.clientX - touch.ax) / step);
+    while (touch.cx < tx) { if (move(1, 0)) touch.sideMoves.push({ t: now, d: 1 }); touch.cx++; }
+    while (touch.cx > tx) { if (move(-1, 0)) touch.sideMoves.push({ t: now, d: -1 }); touch.cx--; }
+    if (my > 0 && my > Math.abs(mx)) {
+      touch.down += my;
+      let dropped = false;
+      while (touch.down >= step) { if (move(0, 1)) { G.score += 1; dropped = true; } touch.down -= step; }
+      if (dropped) renderStats();
     }
   });
   well.addEventListener('pointerup', (e) => {
     if (!touch) return;
     const t = touch; touch = null;
     if (!live()) return;
-    const dx = e.clientX - t.x0, dy = e.clientY - t.y0, dt = performance.now() - t.t0;
-    const vy = dy / Math.max(1, dt);
-    if (t.axis === 'y' && dy > 50 && vy > 0.55) return act('hard');
-    if (t.axis === 'y' && dy < -50 && -vy > 0.45) return act('hold');
-    if (!t.moved && Math.hypot(dx, dy) < LOCK_PX && dt < 300) {
+    const now = performance.now();
+    const dx = e.clientX - t.x0, dy = e.clientY - t.y0, dt = now - t.t0;
+    const vyAll = dy / Math.max(1, dt);
+    const flickDown = (t.fastSince && now - t.fastSince < 400 && e.clientY - t.fastY > 40) || (dy > 40 && vyAll > 0.7 && Math.abs(dy) > Math.abs(dx));
+    if (flickDown) {
+      // undo sideways steps from the start of the flick (and a moment before it)
+      const from = (t.fastSince || now) - 120;
+      for (let i = t.sideMoves.length - 1; i >= 0 && t.sideMoves[i].t >= from; i--) move(-t.sideMoves[i].d, 0);
+      return act('hard');
+    }
+    if (dy < -40 && -vyAll > 0.5 && Math.abs(dy) > Math.abs(dx)) return act('hold');
+    if (!t.moved && Math.hypot(dx, dy) < 12 && dt < 300) {
       act(e.clientX < window.innerWidth * 0.25 ? 'ccw' : 'cw');
     }
   });
